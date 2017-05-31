@@ -43,7 +43,7 @@ class ReplyError(Exception):
         self.rep = rep
 
     def __str__(self):
-        return MessageToString(self.rep).decode()
+        return MessageToString(self.rep)
 
 
 class RequestTimeout(ReplyError):
@@ -289,7 +289,7 @@ class SynClient(AbstractClient):
 
             if reply.id != req_id:
                 logger.warning("[Request] Dropping Reply for the wrong "
-                               "request: " + MessageToString(reply).decode())
+                               "request: " + MessageToString(reply))
                 continue
 
             # Check if reply is an error
@@ -308,7 +308,7 @@ class SynClient(AbstractClient):
                 else:
                     raise ReplyError(reply)
 
-            logger.debug("Received:\n%s", MessageToString(reply).decode())
+            logger.debug("Received:\n%s", MessageToString(reply))
 
             return reply.data if reply.HasField('data') else None
 
@@ -418,7 +418,7 @@ class AsynClient(asynchat.async_chat, AbstractClient):
 
         else:
             logger.warning("Invalid message:\n%s",
-                           MessageToString(msg).decode())
+                           MessageToString(msg))
 
     def on_request(self, req):
         pass
