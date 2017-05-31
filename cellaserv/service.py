@@ -75,6 +75,9 @@ You can specify that your service depends on another service using the
     >>> @Service.require('hokuyo', identification='table')
     ... class WithDep2(Service):
     ...     pass
+    >>> @Service.hook('trajman')
+    ... class Trajman(Service):
+    ...     pass
 
 When the service is instanciated, it will wait for all the dependencies to be
 registered on cellaserv.
@@ -338,6 +341,7 @@ class ServiceMeta(type):
         cls._threads = _threads
 
         cls._service_dependencies = defaultdict(list)
+        cls._service_hooks = defaultdict(list)
 
         return super().__init__(cls)
 
@@ -399,6 +403,24 @@ class Service(AsynClient, metaclass=ServiceMeta):
             return cls
 
         return class_builder
+
+    @classmethod
+    def hook(cls, service, identification=""):
+        """
+        Use the ``Service.hook`` class decorator to specify that this service
+        hook another service ``service`` with identification ``identification``
+        """
+
+        hook = { "hookerService" : cls.__class__.__name__.lower(), "hookerIdentification" : "",
+                "hookedService" : service , "hookedIdentification" : identification}
+
+        def class_builder(cls):
+            cls._service_hooks = dict(hook)
+
+            return cls
+
+        return class_builder
+
 
     # Methods decorators
 
@@ -718,6 +740,9 @@ class Service(AsynClient, metaclass=ServiceMeta):
         # Reuse our socket to create a synchronous client
         syn_client = SynClient()
 
+        # Setup potential hooks
+        self._setup_hooks(syn_client)
+
         # Setup for ConfigVariable, get base value using the synchronous client
         def _on_config_registered_wrap(variable):
             """Whis wrapper create a scope for 'variable'"""
@@ -752,6 +777,28 @@ class Service(AsynClient, metaclass=ServiceMeta):
                 _on_config_registered_wrap(variable))
 
         self._setup_dependencies(syn_client)
+
+    def _setup_hooks(self, syn_client):
+        """
+        setup hook, synchronously.
+
+        Implementation
+        --------------
+
+        This just a simple call to cellaserv/set-hook and the job is done !
+        """
+        if not self._service_hooks:
+            # No hooks, return early
+            return
+
+        self._service_hooks["hookerService"] = self.service_name
+        self._service_hooks["hookedIdentification"] = self.identification
+        req_data_bytes = json.dumps(self._service_hooks).encode()
+        answer = syn_client.request('set-hook', 'cellaserv', data=req_data_bytes)
+
+
+        # TODO check error 
+        # TODO2 implement multi-hook (maybe with regexp, example: hook of ax*)
 
     def _setup_dependencies(self, syn_client):
         """
@@ -886,3 +933,4 @@ class Service(AsynClient, metaclass=ServiceMeta):
         called.
         """
         asyncore.loop()
+
