@@ -513,6 +513,9 @@ class Service(AsynClient, metaclass=ServiceMeta):
 
         self._setup()
 
+    def __del__(self):
+        self._cleanup()
+
     # Override methods of cellaserv.client.AsynClient
 
     def on_request(self, req):
@@ -918,6 +921,29 @@ class Service(AsynClient, metaclass=ServiceMeta):
             t = threading.Thread(target=method_bound)
             t.daemon = True
             t.start()
+
+    # cleanup the service
+
+    def _cleanup(self):
+        """
+        For the moment, only cleanup hook if there is one
+        """
+        self._cleanup_hooks()
+
+    def _cleanup_hooks(self):
+        """
+        Send del-hook to cellaserv
+        """
+        if not self._service_hooks:
+            # No hooks, return early
+            return
+
+        hooked_service = {
+                "service" : self._service_hooks["hookedService"] ,
+                "identification" : self._service_hooks["hookedIdentification"]
+        }
+        req_data_bytes = json.dumps(hooked_service).encode()
+        answer = syn_client.request('del-hook', 'cellaserv', data=req_data_bytes)
 
     def run(self):
         """
