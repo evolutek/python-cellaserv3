@@ -8,19 +8,6 @@ Install
 
 Requirements:
 
-google-protobuf with python3 support: https://github.com/malthe/google-protobuf
-
-Installing ``google-protobuf`` for python3::
-
-    $ git clone https://github.com/malthe/google-protobuf.git
-    $ cd google-protobuf
-    $ ./autogen.sh
-    $ ./configure
-    $ make
-    $ cd python
-    $ python setup.py build
-    $ python setup.py install
-
 Installing ``python-cellaserv2``::
 
     $ git clone ssh://git@bitbucket.org/evolutek/python-cellaserv2.git
