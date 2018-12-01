@@ -7,8 +7,7 @@ from cellaserv.proxy import CellaservProxy
 from cellaserv.service import Service
 
 
-class Test(Service):
-
+class ServiceTest(Service):
     @Service.action
     def foo(self):
         return "bar"
@@ -37,7 +36,7 @@ def test_basic():
     foo = False
     bar = False
     for srvc in srvcs:
-        if srvc["Name"] == "test":
+        if srvc["Name"] == "servicetest":
             if srvc["Identification"] == "foo":
                 assert not foo
                 foo = True
@@ -47,15 +46,15 @@ def test_basic():
     assert foo
     assert bar
 
-    assert cs.test["foo"].foo() == "bar"
-    assert cs.test["bar"].foo() == "bar"
-    assert cs.test["foo"].echo("a") == "a"
-    assert cs.test["bar"].echo("b") == "b"
+    assert cs.servicetest["foo"].foo() == "bar"
+    assert cs.servicetest["bar"].foo() == "bar"
+    assert cs.servicetest["foo"].echo("a") == "a"
+    assert cs.servicetest["bar"].echo("b") == "b"
 
 
 def main():
-    tf = Test("foo")
-    tb = Test("bar")
+    tf = ServiceTest("foo")
+    tb = ServiceTest("bar")
 
     Service.loop()
 

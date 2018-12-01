@@ -9,8 +9,7 @@ from cellaserv.client import SynClient
 from cellaserv.service import Service
 
 
-class Test(Service):
-
+class ServiceTest(Service):
     @Service.event
     def foo(self, a):
         assert int(a) == 0
@@ -56,7 +55,7 @@ def test_basic():
 
 
 def main():
-    t = Test()
+    t = ServiceTest()
     t.run()
 
 

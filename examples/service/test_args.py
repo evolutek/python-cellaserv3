@@ -5,8 +5,7 @@ from cellaserv.service import Service
 from cellaserv.proxy import CellaservProxy
 
 
-class Test(Service):
-
+class ServiceTest(Service):
     @Service.action
     def args(self, *args):
         return args
@@ -24,17 +23,18 @@ def test_args():
 
     cs = CellaservProxy()
 
-    assert cs.test.args(1, 2, 3) == [1, 2, 3]
-    assert cs.test.kw(1, 2) == [1, 2]
-    assert cs.test.kw(a=1, b=2) == [1, 2]
-    assert cs.test.kw(1, b=2) is None
+    assert cs.servicetest.args(1, 2, 3) == [1, 2, 3]
+    assert cs.servicetest.kw(1, 2) == [1, 2]
+    assert cs.servicetest.kw(a=1, b=2) == [1, 2]
+    assert cs.servicetest.kw(1, b=2) is None
 
     p.terminate()
 
 
 def main():
-    t = Test()
+    t = ServiceTest()
     t.run()
+
 
 if __name__ == '__main__':
     main()

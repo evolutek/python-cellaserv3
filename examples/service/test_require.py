@@ -20,7 +20,7 @@ class ServiceC(Service):
     pass
 
 
-class Test(Service):
+class ServiceTest(Service):
     pass
 
 
@@ -40,20 +40,19 @@ def service_c():
 
 
 def service_test():
-    test = Test(identification='12')
+    test = ServiceTest(identification='12')
     test.run()
 
 
 def service_test2():
-    test = Test(identification='42')
+    test = ServiceTest(identification='42')
     test.run()
 
 
 def test_require():
     processes = [
-        Process(target=target)
-        for target in [service_a, service_b, service_c, service_test,
-                       service_test2]
+        Process(target=target) for target in
+        [service_a, service_b, service_c, service_test, service_test2]
     ]
 
     for p in processes:
@@ -63,6 +62,7 @@ def test_require():
 
     for p in processes:
         p.terminate()
+
 
 if __name__ == "__main__":
     test_require()
