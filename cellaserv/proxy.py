@@ -24,9 +24,8 @@ import cellaserv.settings
 from cellaserv.settings import DEBUG
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG if DEBUG >= 2
-                else logging.INFO if DEBUG == 1
-                else logging.WARNING)
+logger.setLevel(logging.DEBUG if DEBUG >= 2 else logging.INFO if DEBUG ==
+                1 else logging.WARNING)
 
 
 class ActionProxy:
@@ -44,16 +43,16 @@ class ActionProxy:
                 "[Proxy] Cannot send a request with both args and kwargs")
             str_stack = ''.join(traceback.format_stack())
             self.client.publish(
-                event='log.coding-error',
-                data=str_stack.encode())
+                event='log.coding-error', data=str_stack.encode())
             return None
 
         data = args or kwargs
         req_data = json.dumps(data).encode() if data else None
-        raw_data = self.client.request(self.action,
-                                       service=self.service,
-                                       identification=self.identification,
-                                       data=req_data)
+        raw_data = self.client.request(
+            self.action,
+            service=self.service,
+            identification=self.identification,
+            data=req_data)
         if raw_data is not None:
             ret = json.loads(raw_data.decode("utf8"))
         else:
@@ -113,7 +112,6 @@ class CellaservProxy:
         :param kwargs dict: Optional data sent with the event.
         """
         try:
-            self.client.publish(event=event,
-                                data=json.dumps(kwargs).encode())
+            self.client.publish(event=event, data=json.dumps(kwargs).encode())
         except:
             traceback.print_exc()

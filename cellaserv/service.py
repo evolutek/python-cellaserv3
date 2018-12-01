@@ -1,7 +1,7 @@
-"""Service =======
+"""Service
 
-Service allows you to write cellaserv services with high-level decorators:
-Service.action and Service.event.
+The Service class allows you to write cellaserv services with high-level
+decorators: Service.action and Service.event.
 
 The @Service.action make a method exported to cellaserv. When matching request
 is received, the method is called. The return value of the method is sent in
@@ -124,32 +124,33 @@ import cellaserv.settings
 from cellaserv.client import AsynClient, SynClient
 
 logger = logging.getLogger(__name__)
-logger.setLevel(
-    logging.DEBUG if cellaserv.settings.DEBUG >= 1 else logging.INFO)
+logger.setLevel(logging.DEBUG if cellaserv.settings.DEBUG >= 1 else logging.
+                INFO)
 
 
 def _request_to_string(req):
-  """Dump request to a short string representation."""
-  strfmt = ("{r.service_name}[{r.service_identification}].{r.method}({data}) "
-            "#id={r.id}")
-  return strfmt.format(r=req, data=req.data if req.data != b"" else "")
+    """Dump request to a short string representation."""
+    strfmt = (
+        "{r.service_name}[{r.service_identification}].{r.method}({data}) "
+        "#id={r.id}")
+    return strfmt.format(r=req, data=req.data if req.data != b"" else "")
 
 
 # Keeping the script compatible between python 3.1 and above
 Event = None
 if sys.version_info[1] < 2:
-  ThreadingEvent = threading._Event
+    ThreadingEvent = threading._Event
 else:
-  ThreadingEvent = threading.Event
+    ThreadingEvent = threading.Event
 
 if "callable" not in dir(__builtins__):
 
-  def callable(f):
-    return hasattr(f, "__call__")
+    def callable(f):
+        return hasattr(f, "__call__")
 
 
 class Event(ThreadingEvent):
-  """
+    """
     Events help you share states between services.
 
     Events can also contain data, set by cellaserv publish messages. When a
@@ -168,34 +169,34 @@ class Event(ThreadingEvent):
         ...     ...
     """
 
-  def __init__(self, set=None, clear=None):
-    """
+    def __init__(self, set=None, clear=None):
+        """
         Define a new cellaserv Event.
 
         :param set str: Event that sets the variable
         :param clear str: Event that clears the variable
         """
-    super().__init__()
+        super().__init__()
 
-    self.name = "?"  # set by Service to the name of the declared field
-    # Optional data held by the event
-    self.data = {}
+        self.name = "?"  # set by Service to the name of the declared field
+        # Optional data held by the event
+        self.data = {}
 
-    # Events that set/clear the event, if they are different from the name
-    self._event_set = set
-    self._event_clear = clear
+        # Events that set/clear the event, if they are different from the name
+        self._event_set = set
+        self._event_clear = clear
 
-  def __call__(self):
-    """
+    def __call__(self):
+        """
         Returns the current value of the event.
 
         Handy syntactic sugar.
         """
-    return self.data
+        return self.data
 
 
 class ConfigVariable:
-  """
+    """
     ConfigVariable setup a variable using the 'config' service. It will always
     have the most up-to-date value.
 
@@ -222,8 +223,8 @@ class ConfigVariable:
         ...         self.color_coef = 1 if value == "red" else -1
     """
 
-  def __init__(self, section, option, coerc=str):
-    """
+    def __init__(self, section, option, coerc=str):
+        """
         Define a new config variable using the 'config service'.
 
         :param section str: The section of this variable (eg. match, robot,
@@ -233,49 +234,49 @@ class ConfigVariable:
         :param coerc function: The value will by passed to this function and
             the result will be the final value.
         """
-    self.section = section
-    self.option = option
-    self.update_cb = []
-    self.value = None
-    self.coerc = coerc
+        self.section = section
+        self.option = option
+        self.update_cb = []
+        self.value = None
+        self.coerc = coerc
 
-  def add_update_cb(self, cb):
-    """
+    def add_update_cb(self, cb):
+        """
         add_update_cb(cb) adds callback function that will be called when the
         value of the variable is updated.
 
         :param cb function: a function compatible with the prototype f(value)
         """
-    self.update_cb.append(cb)
+        self.update_cb.append(cb)
 
-  def update(self, value):
-    """
+    def update(self, value):
+        """
         update(value) is called when the value of the variable changes.
 
         NB. It is not called when the value is first set.
         """
-    logger.debug("Variable %s.%s updated: %s", self.section, self.option, value)
-    self.value = self.coerc(value)
-    for cb in self.update_cb:
-      cb(self.value)
+        logger.debug("Variable %s.%s updated: %s", self.section, self.option,
+                     value)
+        self.value = self.coerc(value)
+        for cb in self.update_cb:
+            cb(self.value)
 
-  def set(self, value):
-    """set(value) is called when setting the value, not updating it."""
-    self.value = self.coerc(value)
+    def set(self, value):
+        """set(value) is called when setting the value, not updating it."""
+        self.value = self.coerc(value)
 
-  def __call__(self):
-    """
+    def __call__(self):
+        """
         Returns the current value of the variable.
 
         Handy syntactic sugar.
         """
-    return self.value
+        return self.value
 
 
 class ServiceMeta(type):
-
-  def __init__(cls, name, bases, nmspc):
-    """
+    def __init__(cls, name, bases, nmspc):
+        """
         ``__init__()`` is called when a new type of Service is needed.
 
         This method setups the list of actions (cls._actions) and subscribed
@@ -284,107 +285,104 @@ class ServiceMeta(type):
         Basic level of metaprogramming magic.
         """
 
-    def _event_wrap_set(event):
+        def _event_wrap_set(event):
+            def _event_set(self, **kwargs):
+                logger.debug("Event %s set, data=%s", event.name, kwargs)
+                event.data = kwargs
+                event.set()
 
-      def _event_set(self, **kwargs):
-        logger.debug("Event %s set, data=%s", event.name, kwargs)
-        event.data = kwargs
-        event.set()
+            return _event_set
 
-      return _event_set
+        def _event_wrap_clear(event):
+            def _event_clear(self, **kwargs):
+                logger.debug("Event %s cleared, data=%s", event.name, kwargs)
+                event.data = kwargs
+                event.clear()
 
-    def _event_wrap_clear(event):
+            return _event_clear
 
-      def _event_clear(self, **kwargs):
-        logger.debug("Event %s cleared, data=%s", event.name, kwargs)
-        event.data = kwargs
-        event.clear()
+        def _config_var_wrap_event(variable):
+            def _variable_update(self, value):
+                variable.update(value=value)
 
-      return _event_clear
+            return _variable_update
 
-    def _config_var_wrap_event(variable):
+        _actions = {}
+        _config_variables = []
+        _events = {}
+        _threads = []
 
-      def _variable_update(self, value):
-        variable.update(value=value)
+        # Go through all the members of the class, check if they are tagged as
+        # action, events, etc. Wrap them if necessary then store them in lists.
+        for name, member in inspect.getmembers(cls):
+            if hasattr(member, "_actions"):
+                for action in member._actions:
+                    _actions[action] = member
+            if hasattr(member, "_events"):
+                for event in member._events:
+                    _events[event] = member
+            if hasattr(member, "_thread"):
+                _threads.append(member)
 
-      return _variable_update
+            if isinstance(member, ConfigVariable):
+                event_name = "config.{section}.{option}".format(
+                    section=member.section, option=member.option)
+                _events[event_name] = _config_var_wrap_event(member)
+                _config_variables.append(member)
 
-    _actions = {}
-    _config_variables = []
-    _events = {}
-    _threads = []
+            elif isinstance(member, Event):
+                member.name = name
+                event_set = member._event_set or name
+                event_clear = member._event_clear or name + "_clear"
+                _events[event_set] = _event_wrap_set(member)
+                _events[event_clear] = _event_wrap_clear(member)
 
-    # Go through all the members of the class, check if they are tagged as
-    # action, events, etc. Wrap them if necessary then store them in lists.
-    for name, member in inspect.getmembers(cls):
-      if hasattr(member, "_actions"):
-        for action in member._actions:
-          _actions[action] = member
-      if hasattr(member, "_events"):
-        for event in member._events:
-          _events[event] = member
-      if hasattr(member, "_thread"):
-        _threads.append(member)
+        cls._actions = _actions
+        cls._config_variables = _config_variables
+        cls._events = _events
+        cls._threads = _threads
 
-      if isinstance(member, ConfigVariable):
-        event_name = "config.{section}.{option}".format(
-            section=member.section, option=member.option)
-        _events[event_name] = _config_var_wrap_event(member)
-        _config_variables.append(member)
+        cls._service_dependencies = defaultdict(list)
+        cls._service_hooks = defaultdict(list)
 
-      elif isinstance(member, Event):
-        member.name = name
-        event_set = member._event_set or name
-        event_clear = member._event_clear or name + "_clear"
-        _events[event_set] = _event_wrap_set(member)
-        _events[event_clear] = _event_wrap_clear(member)
-
-    cls._actions = _actions
-    cls._config_variables = _config_variables
-    cls._events = _events
-    cls._threads = _threads
-
-    cls._service_dependencies = defaultdict(list)
-    cls._service_hooks = defaultdict(list)
-
-    return super().__init__(cls)
+        return super().__init__(cls)
 
 
 class Service(AsynClient, metaclass=ServiceMeta):
 
-  # Mandatory name of the service as it will appeared for cellaserv.
-  service_name = None
-  # Optional identification string used to register multiple instances of the
-  # same service.
-  identification = None
+    # Mandatory name of the service as it will appeared for cellaserv.
+    service_name = None
+    # Optional identification string used to register multiple instances of the
+    # same service.
+    identification = None
 
-  # Protocol helpers
+    # Protocol helpers
 
-  @staticmethod
-  def _decode_msg_data(msg):
-    """Returns the data contained in a message."""
-    if msg.data:
-      return Service._decode_data(msg.data)
-    else:
-      return {}
+    @staticmethod
+    def _decode_msg_data(msg):
+        """Returns the data contained in a message."""
+        if msg.data:
+            return Service._decode_data(msg.data)
+        else:
+            return {}
 
-  @staticmethod
-  def _decode_data(data):
-    """Returns the data contained in a message."""
-    try:
-      obj = data.decode()
-      return json.loads(obj)
-    except (UnicodeDecodeError, ValueError):
-      # In case the data cannot be decoded, return raw data.
-      # This "feature" can be used to communicate with services that
-      # don't handle json data, but only raw bytes.
-      return data
+    @staticmethod
+    def _decode_data(data):
+        """Returns the data contained in a message."""
+        try:
+            obj = data.decode()
+            return json.loads(obj)
+        except (UnicodeDecodeError, ValueError):
+            # In case the data cannot be decoded, return raw data.
+            # This "feature" can be used to communicate with services that
+            # don't handle json data, but only raw bytes.
+            return data
 
-  # Class decorators
+    # Class decorators
 
-  @classmethod
-  def require(cls, service, identification="", cb=None):
-    """
+    @classmethod
+    def require(cls, service, identification="", cb=None):
+        """
         Use the ``Service.require`` class decorator to specify a dependency
         between this service and ``service``. This service will not start
         before the ``service`` service is registered on cellaserv. Optionally
@@ -395,45 +393,45 @@ class Service(AsynClient, metaclass=ServiceMeta):
         all dependencies to be registered.
         """
 
-    depend = (service, identification)
+        depend = (service, identification)
 
-    def class_builder(cls):
-      if cb:
-        cls._service_dependencies[depend].append(cb)
-      else:
-        # this will create an entry in the dict if it does not exists
-        cls._service_dependencies[depend]
+        def class_builder(cls):
+            if cb:
+                cls._service_dependencies[depend].append(cb)
+            else:
+                # this will create an entry in the dict if it does not exists
+                cls._service_dependencies[depend]
 
-      return cls
+            return cls
 
-    return class_builder
+        return class_builder
 
-  @classmethod
-  def hook(cls, service, identification=""):
-    """
+    @classmethod
+    def hook(cls, service, identification=""):
+        """
         Use the ``Service.hook`` class decorator to specify that this service
         hook another service ``service`` with identification ``identification``
         """
 
-    hook = {
-        "hookerService": cls.__class__.__name__.lower(),
-        "hookerIdentification": "",
-        "hookedService": service,
-        "hookedIdentification": identification
-    }
+        hook = {
+            "hookerService": cls.__class__.__name__.lower(),
+            "hookerIdentification": "",
+            "hookedService": service,
+            "hookedIdentification": identification
+        }
 
-    def class_builder(cls):
-      cls._service_hooks = dict(hook)
+        def class_builder(cls):
+            cls._service_hooks = dict(hook)
 
-      return cls
+            return cls
 
-    return class_builder
+        return class_builder
 
-  # Methods decorators
+    # Methods decorators
 
-  @staticmethod
-  def action(method_or_name):
-    """
+    @staticmethod
+    def action(method_or_name):
+        """
         Use the ``Service.action`` decorator on a method to declare it as
         exported to cellaserv. If a parameter is given, change the name of the
         method to that name.
@@ -441,49 +439,49 @@ class Service(AsynClient, metaclass=ServiceMeta):
         :param name str: Change the name of that metod to ``name``.
         """
 
-    def _set_action(method, action):
-      try:
-        method._actions.append(action)
-      except AttributeError:
-        method._actions = [action]
+        def _set_action(method, action):
+            try:
+                method._actions.append(action)
+            except AttributeError:
+                method._actions = [action]
 
-      return method
+            return method
 
-    def _wrapper(method):
-      return _set_action(method, method_or_name)
+        def _wrapper(method):
+            return _set_action(method, method_or_name)
 
-    if callable(method_or_name):
-      return _set_action(method_or_name, method_or_name.__name__)
-    else:
-      return _wrapper
+        if callable(method_or_name):
+            return _set_action(method_or_name, method_or_name.__name__)
+        else:
+            return _wrapper
 
-  @staticmethod
-  def event(method_or_name):
-    """
+    @staticmethod
+    def event(method_or_name):
+        """
         The method decorated with ``Service.event`` will be called when a event
         matching its name (or argument passed to ``Service.event``) will be
         received.
         """
 
-    def _set_event(method, event):
-      try:
-        method._events.append(event)
-      except AttributeError:
-        method._events = [event]
+        def _set_event(method, event):
+            try:
+                method._events.append(event)
+            except AttributeError:
+                method._events = [event]
 
-      return method
+            return method
 
-    def _wrapper(method):
-      return _set_event(method, method_or_name)
+        def _wrapper(method):
+            return _set_event(method, method_or_name)
 
-    if callable(method_or_name):
-      return _set_event(method_or_name, method_or_name.__name__)
-    else:
-      return _wrapper
+        if callable(method_or_name):
+            return _set_event(method_or_name, method_or_name.__name__)
+        else:
+            return _wrapper
 
-  @staticmethod
-  def thread(method):
-    """
+    @staticmethod
+    def thread(method):
+        """
         The method decorated with ``Service.thread`` will run in another
         thread, aside from the main service thread. The thread is automatically
         started when the service is ready to use.
@@ -499,166 +497,168 @@ class Service(AsynClient, metaclass=ServiceMeta):
             ...             print("hello!")
         """
 
-    method._thread = True
-    return method
+        method._thread = True
+        return method
 
-  # Instanciated class land
+    # Instanciated class land
 
-  def __init__(self, identification=None, sock=None):
-    self._reply_cb = {}
+    def __init__(self, identification=None, sock=None):
+        self._reply_cb = {}
 
-    if not self.service_name:
-      # service name is class name in lower case
-      self.service_name = self.__class__.__name__.lower()
+        if not self.service_name:
+            # service name is class name in lower case
+            self.service_name = self.__class__.__name__.lower()
 
-    self.identification = identification or self.identification
+        self.identification = identification or self.identification
 
-    if not sock:
-      # Get a socket from cellaserv configuration mechanism
-      sock = cellaserv.settings.get_socket()
-    self._socket = sock
+        if not sock:
+            # Get a socket from cellaserv configuration mechanism
+            sock = cellaserv.settings.get_socket()
+        self._socket = sock
 
-    self._setup()
+        self._setup()
 
-  def __del__(self):
-    self._cleanup()
+    def __del__(self):
+        self._cleanup()
 
-  # Override methods of cellaserv.client.AsynClient
+    # Override methods of cellaserv.client.AsynClient
 
-  def on_request(self, req):
-    """
+    def on_request(self, req):
+        """
         on_request(req) is called when a request is received by the service.
         """
-    if (self.identification is not None and
-        req.service_identification != self.identification):
-      logger.error("Dropping request for wrong identification")
-      return
+        if (self.identification is not None
+                and req.service_identification != self.identification):
+            logger.error("Dropping request for wrong identification")
+            return
 
-    method = req.method
+        method = req.method
 
-    try:
-      callback = self._actions[method]
-    except KeyError:
-      logger.error("No such method: %s.%s", self, method)
-      self.reply_error_to(req, cellaserv.client.Reply.Error.NoSuchMethod,
-                          method)
-      return
+        try:
+            callback = self._actions[method]
+        except KeyError:
+            logger.error("No such method: %s.%s", self, method)
+            self.reply_error_to(req, cellaserv.client.Reply.Error.NoSuchMethod,
+                                method)
+            return
 
-    try:
-      data = self._decode_msg_data(req)
-    except Exception as e:
-      logger.error(
-          "Bad arguments formatting: %s",
-          _request_to_string(req),
-          exc_info=True)
-      self.reply_error_to(req, cellaserv.client.Reply.Error.BadArguments,
-                          req.data)
-      return
+        try:
+            data = self._decode_msg_data(req)
+        except Exception as e:
+            logger.error(
+                "Bad arguments formatting: %s",
+                _request_to_string(req),
+                exc_info=True)
+            self.reply_error_to(req, cellaserv.client.Reply.Error.BadArguments,
+                                req.data)
+            return
 
-    try:
-      logger.debug("Calling %s/%s.%s(%s)...", self.service_name,
-                   self.identification, method, data)
+        try:
+            logger.debug("Calling %s/%s.%s(%s)...", self.service_name,
+                         self.identification, method, data)
 
-      # Guess type of arguments passing
-      if type(data) is list:
-        args = data
-        kwargs = {}
-      elif type(data) is dict:
-        args = []
-        kwargs = data
-      else:
-        args = [data]
-        kwargs = {}
+            # Guess type of arguments passing
+            if type(data) is list:
+                args = data
+                kwargs = {}
+            elif type(data) is dict:
+                args = []
+                kwargs = data
+            else:
+                args = [data]
+                kwargs = {}
 
-      # We use the desciptor's __get__ because we don't know if the
-      # callback should be bound to this instance.
-      bound_cb = callback.__get__(self, type(self))
-      reply_data = bound_cb(*args, **kwargs)
-      logger.debug("Called  %s/%s.%s(%s) = %s", self.service_name,
-                   self.identification, method, data, reply_data)
-      # Method may, or may not return something. If it returns some data,
-      # it must be encoded in json.
-      if reply_data is not None:
-        reply_data = json.dumps(reply_data).encode()
-    except Exception as e:
-      logger.error(
-          "Exception during %s", _request_to_string(req), exc_info=True)
-      self.reply_error_to(req, cellaserv.client.Reply.Error.Custom, str(e))
-      return
+            # We use the desciptor's __get__ because we don't know if the
+            # callback should be bound to this instance.
+            bound_cb = callback.__get__(self, type(self))
+            reply_data = bound_cb(*args, **kwargs)
+            logger.debug("Called  %s/%s.%s(%s) = %s", self.service_name,
+                         self.identification, method, data, reply_data)
+            # Method may, or may not return something. If it returns some data,
+            # it must be encoded in json.
+            if reply_data is not None:
+                reply_data = json.dumps(reply_data).encode()
+        except Exception as e:
+            logger.error(
+                "Exception during %s", _request_to_string(req), exc_info=True)
+            self.reply_error_to(req, cellaserv.client.Reply.Error.Custom,
+                                str(e))
+            return
 
-    self.reply_to(req, reply_data)
+        self.reply_to(req, reply_data)
 
-  # Default actions
+    # Default actions
 
-  def help(self) -> dict:
-    """
+    def help(self) -> dict:
+        """
         Help about this service.
 
         TODO: refactor all help functions, compute help dicts when creating the
         class using metaprogramming.
         """
-    docs = {}
-    docs["doc"] = inspect.getdoc(self)
-    docs["actions"] = self.help_actions()
-    docs["events"] = self.help_events()
-    return docs
+        docs = {}
+        docs["doc"] = inspect.getdoc(self)
+        docs["actions"] = self.help_actions()
+        docs["events"] = self.help_events()
+        return docs
 
-  help._actions = ["help"]
+    help._actions = ["help"]
 
-  def _get_help(self, methods) -> dict:
-    """
+    def _get_help(self, methods) -> dict:
+        """
         Helper function that create a dict with the signature and the
         documentation of a mapping of methods.
         """
-    docs = {}
-    for name, unbound_f in methods.items():
-      # Get the function from self to get a bound method in order to
-      # remove the first parameter (class name).
-      bound_f = unbound_f.__get__(self, type(self))
-      doc = inspect.getdoc(bound_f) or ""
+        docs = {}
+        for name, unbound_f in methods.items():
+            # Get the function from self to get a bound method in order to
+            # remove the first parameter (class name).
+            bound_f = unbound_f.__get__(self, type(self))
+            doc = inspect.getdoc(bound_f) or ""
 
-      # Get signature of this method, ie. how the use must call it
-      if sys.version_info.minor < 3:
-        sig = (name + inspect.formatargspec(*inspect.getfullargspec(bound_f)))
-      else:
-        sig = name + str(inspect.signature(bound_f))
+            # Get signature of this method, ie. how the use must call it
+            if sys.version_info.minor < 3:
+                sig = (name +
+                       inspect.formatargspec(*inspect.getfullargspec(bound_f)))
+            else:
+                sig = name + str(inspect.signature(bound_f))
 
-      docs[name] = {"doc": doc, "sig": sig}
-    return docs
+            docs[name] = {"doc": doc, "sig": sig}
+        return docs
 
-  def help_actions(self) -> dict:
-    """List available actions for this service."""
-    return self._get_help(self._actions)
+    def help_actions(self) -> dict:
+        """List available actions for this service."""
+        return self._get_help(self._actions)
 
-  help_actions._actions = ["help_actions"]
+    help_actions._actions = ["help_actions"]
 
-  def help_events(self) -> dict:
-    """List subscribed events of this service."""
-    return self._get_help(self._events)
+    def help_events(self) -> dict:
+        """List subscribed events of this service."""
+        return self._get_help(self._events)
 
-  help_events._actions = ["help_events"]
+    help_events._actions = ["help_events"]
 
-  # Note: we cannot use @staticmethod here because the descriptor it creates
-  # is shadowing the attribute we add to the method.
-  def kill(self) -> "Does not return.":
-    """Kill the service."""
-    os.kill(os.getpid(), 9)
+    # Note: we cannot use @staticmethod here because the descriptor it creates
+    # is shadowing the attribute we add to the method.
+    def kill(self) -> "Does not return.":
+        """Kill the service."""
+        os.kill(os.getpid(), 9)
 
-  kill._actions = ["kill"]
+    kill._actions = ["kill"]
 
-  def stacktraces(self) -> dict:
-    """Return a stacktrace for each thread running."""
-    ret = {}
-    for thread_id, stack in sys._current_frames().items():
-      ret[thread_id] = "\n".join(traceback.format_stack(stack))
-    return ret
+    def stacktraces(self) -> dict:
+        """Return a stacktrace for each thread running."""
+        ret = {}
+        for thread_id, stack in sys._current_frames().items():
+            ret[thread_id] = "\n".join(traceback.format_stack(stack))
+        return ret
 
-  stacktraces._actions = ["stacktraces"]
+    stacktraces._actions = ["stacktraces"]
 
-  # Convenience methods
+    # Convenience methods
 
-  def publish(self, event, *args, **kwargs):
-    """
+    def publish(self, event, *args, **kwargs):
+        """
         Send a publish message.
 
         :param event str: Event name
@@ -666,31 +666,31 @@ class Service(AsynClient, metaclass=ServiceMeta):
                          in json.
         """
 
-    if args and kwargs:
-      logging.error("Cannot publish with both args and kwargs")
-      traceback.print_stack()
-      kwargs["args"] = repr(args)
-      pub_data = kwargs
-    elif args:
-      pub_data = args
-    else:
-      pub_data = kwargs
+        if args and kwargs:
+            logging.error("Cannot publish with both args and kwargs")
+            traceback.print_stack()
+            kwargs["args"] = repr(args)
+            pub_data = kwargs
+        elif args:
+            pub_data = args
+        else:
+            pub_data = kwargs
 
-    if pub_data:
-      try:
-        data = json.dumps(pub_data)
-      except:
-        self.log_exc()
-        logging.error("Could not serialize publish data: %s", pub_data)
-        data = repr(pub_data)
-      data = data.encode()
-    else:
-      data = None
+        if pub_data:
+            try:
+                data = json.dumps(pub_data)
+            except:
+                self.log_exc()
+                logging.error("Could not serialize publish data: %s", pub_data)
+                data = repr(pub_data)
+            data = data.encode()
+        else:
+            data = None
 
-    super().publish(event=event, data=data)
+        super().publish(event=event, data=data)
 
-  def log(self, *args, what=None, **log_data):
-    """
+    def log(self, *args, what=None, **log_data):
+        """
         Send a log message to cellaserv using the service's name and
         identification, if any. ``what`` is an optional topic for the log. If
         provided, it will we appened to the log name.
@@ -698,45 +698,45 @@ class Service(AsynClient, metaclass=ServiceMeta):
         Logs in cellaserv are implemented using event with the form
         ``log.<service_name>.<optional service_ident>.<optional what>``.
         """
-    log_name = "log." + self.service_name
+        log_name = "log." + self.service_name
 
-    if self.identification:
-      log_name += "." + self.identification
+        if self.identification:
+            log_name += "." + self.identification
 
-    if what:
-      log_name += "." + what
+        if what:
+            log_name += "." + what
 
-    if args:
-      # Emulate a call to print()
-      out = io.StringIO()
-      print(*args, end="", file=out)
-      out.seek(0)
-      log_data["msg"] = out.read()
+        if args:
+            # Emulate a call to print()
+            out = io.StringIO()
+            print(*args, end="", file=out)
+            out.seek(0)
+            log_data["msg"] = out.read()
 
-    # Publish log message to cellaserv
-    self.publish(event=log_name, **log_data)
+        # Publish log message to cellaserv
+        self.publish(event=log_name, **log_data)
 
-  def log_exc(self):
-    """Log the current exception."""
+    def log_exc(self):
+        """Log the current exception."""
 
-    str_stack = "".join(traceback.format_exc())
-    super().publish(event="log.coding-error", data=str_stack.encode())
+        str_stack = "".join(traceback.format_exc())
+        super().publish(event="log.coding-error", data=str_stack.encode())
 
-  # Main setup of the service
+    # Main setup of the service
 
-  def _setup(self):
-    """
+    def _setup(self):
+        """
         _setup() will use the socket connected to cellaserv to initialize the
         service.
         """
 
-    self._setup_synchronous()
-    self._setup_asynchronous()
+        self._setup_synchronous()
+        self._setup_asynchronous()
 
-    logger.info("[Dependencies] Service ready!")
+        logger.info("[Dependencies] Service ready!")
 
-  def _setup_synchronous(self):
-    """
+    def _setup_synchronous(self):
+        """
         setup_synchronous manages the static initialization of the service.
         When this methods return, the service should be fully functionnal.
 
@@ -746,48 +746,51 @@ class Service(AsynClient, metaclass=ServiceMeta):
         - configuration variables should have the default value.
         """
 
-    # Reuse our socket to create a synchronous client
-    syn_client = SynClient()
+        # Reuse our socket to create a synchronous client
+        syn_client = SynClient()
 
-    # Setup potential hooks
-    self._setup_hooks(syn_client)
+        # Setup potential hooks
+        self._setup_hooks(syn_client)
 
-    # Setup for ConfigVariable, get base value using the synchronous client
-    def _on_config_registered_wrap(variable):
-      """Whis wrapper create a scope for 'variable'"""
+        # Setup for ConfigVariable, get base value using the synchronous client
+        def _on_config_registered_wrap(variable):
+            """Whis wrapper create a scope for 'variable'"""
 
-      def on_config_registered():
-        """
+            def on_config_registered():
+                """
                 on_config_registered is called when the 'config' service is
                 available. It sends a request to 'config' to get de default
                 value of the variable.
                 """
-        # Get the value of the configuration variable
-        req_data = {"section": variable.section, "option": variable.option}
-        req_data_bytes = json.dumps(req_data).encode()
-        # Send the request
-        data = syn_client.request("get", "config", data=req_data_bytes)
-        # Data is json encoded
-        args = self._decode_data(data)
-        logger.info("[ConfigVariable] %s.%s is %s", variable.section,
-                    variable.option, args)
-        # we don't use update() because the context of the service is
-        # not yet initialized, and it is not an update of a previous
-        # value (because there isn't)
-        variable.set(args)
+                # Get the value of the configuration variable
+                req_data = {
+                    "section": variable.section,
+                    "option": variable.option
+                }
+                req_data_bytes = json.dumps(req_data).encode()
+                # Send the request
+                data = syn_client.request("get", "config", data=req_data_bytes)
+                # Data is json encoded
+                args = self._decode_data(data)
+                logger.info("[ConfigVariable] %s.%s is %s", variable.section,
+                            variable.option, args)
+                # we don't use update() because the context of the service is
+                # not yet initialized, and it is not an update of a previous
+                # value (because there isn't)
+                variable.set(args)
 
-      return on_config_registered
+            return on_config_registered
 
-    # When the service 'config' is available, request base values for
-    # ConfigVariables, using syn_client
-    for variable in self._config_variables:
-      self._service_dependencies[("config", "")].append(
-          _on_config_registered_wrap(variable))
+        # When the service 'config' is available, request base values for
+        # ConfigVariables, using syn_client
+        for variable in self._config_variables:
+            self._service_dependencies[("config", "")].append(
+                _on_config_registered_wrap(variable))
 
-    self._setup_dependencies(syn_client)
+        self._setup_dependencies(syn_client)
 
-  def _setup_hooks(self, syn_client):
-    """
+    def _setup_hooks(self, syn_client):
+        """
         setup hook, synchronously.
 
         Implementation
@@ -795,20 +798,21 @@ class Service(AsynClient, metaclass=ServiceMeta):
 
         This just a simple call to cellaserv/set-hook and the job is done !
         """
-    if not self._service_hooks:
-      # No hooks, return early
-      return
+        if not self._service_hooks:
+            # No hooks, return early
+            return
 
-    self._service_hooks["hookerService"] = self.service_name
-    self._service_hooks["hookedIdentification"] = self.identification
-    req_data_bytes = json.dumps(self._service_hooks).encode()
-    answer = syn_client.request("set-hook", "cellaserv", data=req_data_bytes)
+        self._service_hooks["hookerService"] = self.service_name
+        self._service_hooks["hookedIdentification"] = self.identification
+        req_data_bytes = json.dumps(self._service_hooks).encode()
+        answer = syn_client.request(
+            "set-hook", "cellaserv", data=req_data_bytes)
 
-    # TODO check error
-    # TODO2 implement multi-hook (maybe with regexp, example: hook of ax*)
+        # TODO check error
+        # TODO2 implement multi-hook (maybe with regexp, example: hook of ax*)
 
-  def _setup_dependencies(self, syn_client):
-    """
+    def _setup_dependencies(self, syn_client):
+        """
         Wait for all dependencies, synchronously.
 
         Implementation
@@ -829,60 +833,61 @@ class Service(AsynClient, metaclass=ServiceMeta):
         - when all services are registered, call callbacks
         """
 
-    if not self._service_dependencies:
-      # No dependencies, return early
-      return
+        if not self._service_dependencies:
+            # No dependencies, return early
+            return
 
-    # We use a set for easier removal
-    services_unregistered = set(self._service_dependencies.keys())
+        # We use a set for easier removal
+        services_unregistered = set(self._service_dependencies.keys())
 
-    # First register for new services, so that we don't miss a service
-    # if it registers just after the 'list-services' call.
-    syn_client.subscribe("log.cellaserv.new-service")
+        # First register for new services, so that we don't miss a service
+        # if it registers just after the 'list-services' call.
+        syn_client.subscribe("log.cellaserv.new-service")
 
-    # Get the list of already registered service.
-    data = syn_client.request("list-services", "cellaserv")
-    services_registered = self._decode_data(data)
+        # Get the list of already registered service.
+        data = syn_client.request("list-services", "cellaserv")
+        services_registered = self._decode_data(data)
 
-    for service in services_registered:
-      service_ident = (service["Name"], service["Identification"])
-      try:
-        services_unregistered.remove(service_ident)
-      except KeyError:
-        pass  # We were not waiting for this service.
+        for service in services_registered:
+            service_ident = (service["Name"], service["Identification"])
+            try:
+                services_unregistered.remove(service_ident)
+            except KeyError:
+                pass  # We were not waiting for this service.
 
-    # Wait for all service to have registered.
-    while services_unregistered:
-      logger.info("[Dependencies] Waiting for %s", services_unregistered)
-      msg = syn_client.read_message()
-      if msg.type == Message.Publish:
-        # We are waiting for a pubish or form:
-        # 'log.cellaserv.new-service'
-        # It is sent automatically by cellaserv when a new service is
-        # registered
-        pub = Publish()
-        pub.ParseFromString(msg.content)
-        if pub.event == "log.cellaserv.new-service":
-          data = json.loads(pub.data.decode())
-          name_ident = (data["Name"], data["Identification"])
-          try:
-            services_unregistered.remove(name_ident)
-            logger.info("[Dependencies] Waited for %s", name_ident)
-          except KeyError:
-            pass  # It was not a service we were waiting for.
-        else:
-          logger.error("Dropping non 'new-service' publish: %s",
-                       MessageToString(pub))
-      else:
-        logger.error("Dropping unknown message: %s", MessageToString(msg))
+        # Wait for all service to have registered.
+        while services_unregistered:
+            logger.info("[Dependencies] Waiting for %s", services_unregistered)
+            msg = syn_client.read_message()
+            if msg.type == Message.Publish:
+                # We are waiting for a pubish or form:
+                # 'log.cellaserv.new-service'
+                # It is sent automatically by cellaserv when a new service is
+                # registered
+                pub = Publish()
+                pub.ParseFromString(msg.content)
+                if pub.event == "log.cellaserv.new-service":
+                    data = json.loads(pub.data.decode())
+                    name_ident = (data["Name"], data["Identification"])
+                    try:
+                        services_unregistered.remove(name_ident)
+                        logger.info("[Dependencies] Waited for %s", name_ident)
+                    except KeyError:
+                        pass  # It was not a service we were waiting for.
+                else:
+                    logger.error("Dropping non 'new-service' publish: %s",
+                                 MessageToString(pub))
+            else:
+                logger.error("Dropping unknown message: %s",
+                             MessageToString(msg))
 
-    # We have waited for all the dependencies to register.
-    for callbacks in self._service_dependencies.values():
-      for callback in callbacks:
-        callback()
+        # We have waited for all the dependencies to register.
+        for callbacks in self._service_dependencies.values():
+            for callback in callbacks:
+                callback()
 
-  def _setup_asynchronous(self):
-    """
+    def _setup_asynchronous(self):
+        """
         Setup the asynchronous part of the service, that is implemented by its
         superclass.
 
@@ -890,75 +895,76 @@ class Service(AsynClient, metaclass=ServiceMeta):
         event loop, and have requests, events, etc. dispatched to it.
         """
 
-    def _event_wrap(fun):
-      """Convert event data (raw bytes) to arguments for methods."""
+        def _event_wrap(fun):
+            """Convert event data (raw bytes) to arguments for methods."""
 
-      def _wrap(data=None):
-        """called by cellaserv.client.AsynClient"""
-        if data:
-          kwargs = json.loads(data.decode())
-        else:
-          kwargs = {}
-        logger.debug("Publish callback: %s(%s)", fun.__name__, kwargs)
+            def _wrap(data=None):
+                """called by cellaserv.client.AsynClient"""
+                if data:
+                    kwargs = json.loads(data.decode())
+                else:
+                    kwargs = {}
+                logger.debug("Publish callback: %s(%s)", fun.__name__, kwargs)
 
-        try:
-          fun(**kwargs)
-        except:
-          self.log_exc()
+                try:
+                    fun(**kwargs)
+                except:
+                    self.log_exc()
 
-      return _wrap
+            return _wrap
 
-    super().__init__(self._socket)
+        super().__init__(self._socket)
 
-    # Subsribe to all events
-    for event_name, callback in self._events.items():
-      callback_bound = callback.__get__(self, type(self))
-      self.add_subscribe_cb(event_name, _event_wrap(callback_bound))
+        # Subsribe to all events
+        for event_name, callback in self._events.items():
+            callback_bound = callback.__get__(self, type(self))
+            self.add_subscribe_cb(event_name, _event_wrap(callback_bound))
 
-    # Register the service last
-    self.register(self.service_name, self.identification)
+        # Register the service last
+        self.register(self.service_name, self.identification)
 
-    # Start threads
-    for method in self._threads:
-      method_bound = method.__get__(self, type(self))
-      t = threading.Thread(target=method_bound)
-      t.daemon = True
-      t.start()
+        # Start threads
+        for method in self._threads:
+            method_bound = method.__get__(self, type(self))
+            t = threading.Thread(target=method_bound)
+            t.daemon = True
+            t.start()
 
-  # cleanup the service
+    # cleanup the service
 
-  def _cleanup(self):
-    """
+    def _cleanup(self):
+        """
         For the moment, only cleanup hook if there is one
         """
-    self._cleanup_hooks()
+        self._cleanup_hooks()
 
-  def _cleanup_hooks(self):
-    """
+    def _cleanup_hooks(self):
+        """
         Send del-hook to cellaserv
         """
-    if not self._service_hooks:
-      # No hooks, return early
-      return
+        if not self._service_hooks:
+            # No hooks, return early
+            return
 
-    hooked_service = {
-        "service": self._service_hooks["hookedService"],
-        "identification": self._service_hooks["hookedIdentification"]
-    }
-    req_data_bytes = json.dumps(hooked_service).encode()
-    answer = syn_client.request("del-hook", "cellaserv", data=req_data_bytes)
+        hooked_service = {
+            "service": self._service_hooks["hookedService"],
+            "identification": self._service_hooks["hookedIdentification"]
+        }
+        req_data_bytes = json.dumps(hooked_service).encode()
+        answer = syn_client.request(
+            "del-hook", "cellaserv", data=req_data_bytes)
 
-  def run(self):
-    """
+    def run(self):
+        """
         Sugar for starting the service.
         """
-    Service.loop()
+        Service.loop()
 
-  @staticmethod
-  def loop():
-    """
+    @staticmethod
+    def loop():
+        """
         loop() will start the asyncore engine therefore, if you have not
         started another thread, only callbacks (eg. actions, events) will be
         called.
         """
-    asyncore.loop()
+        asyncore.loop()
