@@ -1,6 +1,6 @@
 # Maintainer: Rémi Audebert <mail@halfr.net>
 pkgname=python-cellaserv2
-pkgver=
+pkgver=git
 pkgrel=1
 pkgdesc="cellaserv2 client for python3"
 arch=('any')
