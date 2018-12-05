@@ -28,7 +28,7 @@ def make_logger(name):
     return logger
 
 
-make_setting('HOST', 'evolutek.org', 'client', 'host', 'CS_HOST')
+make_setting('HOST', 'localhost', 'client', 'host', 'CS_HOST')
 make_setting('PORT', 4200, 'client', 'port', 'CS_PORT', int)
 make_setting('DEBUG', 0, 'client', 'debug', 'CS_DEBUG', int)
 
