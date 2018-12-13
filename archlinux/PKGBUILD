@@ -1,18 +1,18 @@
-# Maintainer: Rémi Audebert <mail@halfr.net>
-pkgname=python-cellaserv2
+# Maintainer: Rémi Audebert <rflah0@gmail.com>
+pkgname=python-cellaserv3
 pkgver=git
 pkgrel=1
-pkgdesc="cellaserv2 client for python3"
+pkgdesc="cellaserv3 client for python3"
 arch=('any')
-url="http://code.evolutek.org/python-cellaserv2"
-license=('beerware')
+url="https://bitbucket.org/evolutek/python-cellaserv3"
+license=('apache')
 groups=()
 depends=('python3' 'python-protobuf' 'python-setuptools')
 makedepends=('git')
-conflicts=('python-cellaserv')
+conflicts=('python-cellaserv' 'python-cellaserv2')
 provides=('python-cellaserv')
 options=(!emptydirs)
-source=("$pkgname::git+https://bitbucket.org/evolutek/python-cellaserv2.git")
+source=("$pkgname::git+https://bitbucket.org/evolutek/python-cellaserv3.git")
 md5sums=('SKIP')
 
 pkgver() {
