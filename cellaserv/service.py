@@ -773,7 +773,7 @@ class Service(AsynClient, metaclass=ServiceMeta):
         - subscribe to 'log.cellaserv.new-service' to get notified of new
           services.
         - request the service 'cellaserv' for the list of currently connected
-          services, using the 'list-services' method. Dependencies already
+          services, using the 'list_services' method. Dependencies already
           registered are removed from the list of waited depencies
         - wait for publish messages 'log.cellaserv.new-service' for each
           dependency.
@@ -788,15 +788,15 @@ class Service(AsynClient, metaclass=ServiceMeta):
         services_unregistered = set(self._service_dependencies.keys())
 
         # First register for new services, so that we don't miss a service
-        # if it registers just after the 'list-services' call.
+        # if it registers just after the 'list_services' call.
         syn_client.subscribe("log.cellaserv.new-service")
 
         # Get the list of already registered service.
-        data = syn_client.request("list-services", "cellaserv")
+        data = syn_client.request("list_services", "cellaserv")
         services_registered = self._decode_data(data)
 
         for service in services_registered:
-            service_ident = (service["Name"], service["Identification"])
+            service_ident = (service["name"], service["identification"])
             try:
                 services_unregistered.remove(service_ident)
             except KeyError:
@@ -815,7 +815,7 @@ class Service(AsynClient, metaclass=ServiceMeta):
                 pub.ParseFromString(msg.content)
                 if pub.event == "log.cellaserv.new-service":
                     data = json.loads(pub.data.decode())
-                    name_ident = (data["Name"], data["Identification"])
+                    name_ident = (data["name"], data["identification"])
                     try:
                         services_unregistered.remove(name_ident)
                         logger.info("[Dependencies] Waited for %s", name_ident)
