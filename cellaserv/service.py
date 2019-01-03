@@ -101,6 +101,7 @@ are pretty useful and simplify writing of services for the user.
 
 from collections import defaultdict
 import asyncore
+import functools
 import inspect
 import io
 import json
@@ -108,6 +109,7 @@ import logging
 import os
 import sys
 import threading
+import time
 import traceback
 
 from google.protobuf.text_format import MessageToString
@@ -350,10 +352,11 @@ class Service(AsynClient, metaclass=ServiceMeta):
     service_name = None
     # Optional identification string used to register multiple instances of the
     # same service.
-    identification = None
+    identification = ""
 
     # Protocol helpers
 
+    # TODO(halfr): should be classmethod
     @staticmethod
     def _decode_msg_data(msg):
         """Returns the data contained in a message."""
@@ -477,14 +480,14 @@ class Service(AsynClient, metaclass=ServiceMeta):
 
     # Instanciated class land
 
-    def __init__(self, identification=None, sock=None):
+    def __init__(self, identification="", sock=None):
         self._reply_cb = {}
 
         if not self.service_name:
             # service name is class name in lower case
             self.service_name = self.__class__.__name__.lower()
 
-        self.identification = identification or self.identification
+        self.identification = identification or self.identification or ""
 
         if not sock:
             # Get a socket from cellaserv configuration mechanism
@@ -499,8 +502,7 @@ class Service(AsynClient, metaclass=ServiceMeta):
         """
         on_request(req) is called when a request is received by the service.
         """
-        if (self.identification is not None
-                and req.service_identification != self.identification):
+        if req.service_identification != self.identification:
             logger.error("Dropping request for wrong identification")
             return
 
@@ -872,8 +874,13 @@ class Service(AsynClient, metaclass=ServiceMeta):
 
         # Start threads
         for method in self._threads:
-            method_bound = method.__get__(self, type(self))
-            t = threading.Thread(target=method_bound)
+            @functools.wraps(method)
+            def delayed():
+                # Delay starting the callback to prevent race condition with
+                # asyncore setup in asyncore.loop()
+                time.sleep(1)
+                method.__get__(self, type(self))()
+            t = threading.Thread(target=delayed)
             t.daemon = True
             t.start()
 
