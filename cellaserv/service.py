@@ -346,6 +346,19 @@ class ServiceMeta(type):
         return super().__init__(cls)
 
 
+def _make_delayed(func):
+    """Returns wrapped func whose execution is delayed."""
+
+    delay_seconds = 1
+
+    @functools.wraps(func)
+    def inner():
+        time.sleep(delay_seconds)
+        func()
+
+    return inner
+
+
 class Service(AsynClient, metaclass=ServiceMeta):
 
     # Mandatory name of the service as it will appeared for cellaserv.
@@ -874,13 +887,11 @@ class Service(AsynClient, metaclass=ServiceMeta):
 
         # Start threads
         for method in self._threads:
-            @functools.wraps(method)
-            def delayed():
-                # Delay starting the callback to prevent race condition with
-                # asyncore setup in asyncore.loop()
-                time.sleep(1)
-                method.__get__(self, type(self))()
-            t = threading.Thread(target=delayed)
+            # Bind method to the current instance
+            bound_method = method.__get__(self, type(self))
+            # Delay starting the callback to prevent race condition with
+            # asyncore setup in asyncore.loop()
+            t = threading.Thread(target=_make_delayed(bound_method))
             t.daemon = True
             t.start()
 
