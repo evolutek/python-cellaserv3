@@ -36,11 +36,11 @@ def test_basic():
     foo = False
     bar = False
     for srvc in srvcs:
-        if srvc["Name"] == "servicetest":
-            if srvc["Identification"] == "foo":
+        if srvc["name"] == "servicetest":
+            if srvc["identification"] == "foo":
                 assert not foo
                 foo = True
-            if srvc["Identification"] == "bar":
+            if srvc["identification"] == "bar":
                 assert not bar
                 bar = True
     assert foo
