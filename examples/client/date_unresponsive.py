@@ -3,24 +3,25 @@
 Using the cellaserv module to implement a service that does nothing. Used to
 test timeouts.
 """
-import asyncore
+import asyncio
 
-from cellaserv.settings import get_socket
-from cellaserv.client import AsynClient
+from cellaserv.client import Client
 
-class DateService(AsynClient):
 
-    def __init__(self, sock):
-        super().__init__(sock)
-        self.register('date')
+class DateService(Client):
+    def __init__(self):
+        super().__init__()
 
-    def on_request(self, req):
+    async def on_request(self, req):
         pass
 
-def main():
-    with get_socket() as sock:
-        service = DateService(sock)
-        asyncore.loop()
+
+async def main():
+    service = DateService()
+    await service.connect()
+    await service.register('date')
+    await service.loop()
+
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

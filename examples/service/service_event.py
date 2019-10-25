@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-
 """Asynchronous event setting.
 
 .. warning::
@@ -9,24 +8,24 @@
 
 Set::
 
-    $ cellaservctl publish some-event
-    $ cellaservctl publish my-set
+    $ cellaservctl publish some_event
+    $ cellaservctl publish my_set
 
 Clear::
 
     # No clearing event have been declared for some_event
-    $ cellaservctl publish my-clear
+    $ cellaservctl publish my_clear
 
 Passing data::
 
-    $ cellaservctl publish my-set foo=bar
+    $ cellaservctl publish my_set foo=bar
 
 Will display::
 
     Set! self.variable.data = {'foo': 'bar'}
 """
 
-from time import sleep
+import asyncio
 
 from cellaserv.service import Service, Event
 
@@ -34,16 +33,13 @@ from cellaserv.service import Service, Event
 class Foo(Service):
 
     some_event = Event()  # set event is 'some_event'
-    event = Event(set='my-set', clear='my-clear')
+    event = Event(set='my_set', clear='my_clear')
 
     # Threads
 
-    @Service.thread
-    def thread_loop(self):
-        while not sleep(1):
-            # Do someting
-            # ...
-
+    @Service.coro
+    async def coro_loop(self):
+        while True:
             print("self.some_event = {}".format(self.some_event.is_set()))
 
             # Check variable state
@@ -52,10 +48,20 @@ class Foo(Service):
             else:
                 print("Unset. self.event.data = {}".format(self.event.data))
 
+            await asyncio.sleep(1)
+
+    @Service.coro
+    async def coro_loop_wait(self):
+        while True:
+            await self.event.wait()
+            print("Waited!")
+            await asyncio.sleep(1)
+
 
 def main():
     foo = Foo()
     foo.run()
+
 
 if __name__ == '__main__':
     main()

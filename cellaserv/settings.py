@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
-import inspect
+import asyncio
 import configparser
 import logging
 import os
-import socket
-import time
 
 logging.basicConfig()
 
@@ -34,17 +32,12 @@ make_setting('PORT', 4200, 'client', 'port', 'CS_PORT', int)
 make_setting('DEBUG', 0, 'client', 'debug', 'CS_DEBUG', int)
 
 
+def get_connection(loop):
+    """Open a socket to cellaserv using user configuration."""
+    return asyncio.open_connection(HOST, PORT, loop=loop)
+
+
 logger = make_logger(__name__)
 logger.debug("DEBUG: %s", DEBUG)
 logger.debug("HOST: %s", HOST)
 logger.debug("PORT: %s", PORT)
-
-
-def get_socket():
-    """Open a socket to cellaserv using user configuration."""
-    while True:
-        try:
-            return socket.create_connection((HOST, PORT))
-        except OSError:
-            logger.warn("Could not connect to cellaserv: %s:%s", HOST, PORT)
-            time.sleep(1)

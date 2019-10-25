@@ -4,23 +4,26 @@ Data for requests and events is encoded as JSON objects.
 
 Example usage::
 
+    >>> import asyncio
     >>> from cellaserv.proxy import CellaservProxy
-    >>> robot = CellaservProxy()
-    >>> robot.date.time()
-    1353714592
-    >>> # Send event 'match-start'
-    >>> robot('match-start')
-    >>> # Send event 'wait' with data
-    >>> robot('wait', seconds=2)
+    >>> async def run():
+    ...     robot = CellaservProxy()
+    ...     await robot.connect()
+    ...     # Make a query
+    ...     await robot.date.time()
+    ...     # Send event 'match-start'
+    ...     robot('match-start')
+    ...     # Send event 'wait' with data
+    ...     robot('wait', seconds=2)
+    >>> asyncio.run(run())
 """
 
+import asyncio
 import json
 import logging
-import socket
 import traceback
 
-import cellaserv.client
-import cellaserv.settings
+from cellaserv.client import Client
 from cellaserv.settings import DEBUG
 
 logger = logging.getLogger(__name__)
@@ -30,80 +33,64 @@ logger.setLevel(logging.DEBUG if DEBUG >= 2 else logging.INFO if DEBUG ==
 
 class ActionProxy:
     """Action proxy for cellaserv."""
-
     def __init__(self, action, service, identification, client):
-        self.action = action
-        self.service = service
-        self.identification = identification
-        self.client = client
+        self._action = action
+        self._service = service
+        self._identification = identification
+        self._client = client
+
+    async def _json_loads(self, reply_future):
+        return json.loads(await reply_future)
 
     def __call__(self, *args, **kwargs):
         if args and kwargs:
             logger.error(
                 "[Proxy] Cannot send a request with both args and kwargs")
             str_stack = ''.join(traceback.format_stack())
-            self.client.publish(
-                event='log.coding-error', data=str_stack.encode())
+            self._client.publish(event='log.error', data=str_stack.encode())
             return None
 
         data = args or kwargs
         req_data = json.dumps(data).encode() if data else None
-        raw_data = self.client.request(
-            self.action,
-            service=self.service,
-            identification=self.identification,
+        reply_future = self._client.request(
+            self._action,
+            service=self._service,
+            identification=self._identification,
             data=req_data)
-        if raw_data is not None:
-            ret = json.loads(raw_data.decode("utf8"))
-        else:
-            ret = None
-        return ret
+        return self._json_loads(reply_future)
 
 
 class ServiceProxy:
     """Service proxy for cellaserv."""
-
     def __init__(self, service_name, client):
-        self.service_name = service_name
-        self.client = client
-        self.identification = None
+        self._service_name = service_name
+        self._client = client
+        self._identification = None
 
     def __getattr__(self, action):
-        if action.startswith('__') or action in ['getdoc']:
-            return super().__getattr__(action)
-
-        action = ActionProxy(action, self.service_name, self.identification,
-                             self.client)
+        action = ActionProxy(action, self._service_name, self._identification,
+                             self._client)
         return action
 
     def __getitem__(self, identification):
-        self.identification = identification
+        self._identification = identification
         return self
 
 
 class CellaservProxy:
     """Proxy class for cellaserv."""
-
-    def __init__(self, client=None, host=None, port=None):
-        self.socket = None
-
+    def __init__(self, client=None):
         if client:
-            self.client = client
+            self._client = client
         else:
-            if not host:
-                host = cellaserv.settings.HOST
-            if not port:
-                port = cellaserv.settings.PORT
-
-            self.socket = socket.create_connection((host, port))
-            self.client = cellaserv.client.SynClient(self.socket)
+            self._client = Client()
 
     def __getattr__(self, service_name):
-        return ServiceProxy(service_name, self.client)
+        return ServiceProxy(service_name, self._client)
 
-    def __del__(self):
-        if self.socket:
-            self.socket.close()
+    async def connect(self):
+        await self._client.connect()
+        asyncio.ensure_future(self._client.loop())
 
     def __call__(self, event, **kwargs):
         """Send a publish message.
@@ -112,6 +99,6 @@ class CellaservProxy:
         :param kwargs dict: Optional data sent with the event.
         """
         try:
-            self.client.publish(event=event, data=json.dumps(kwargs).encode())
+            self._client.publish(event=event, data=json.dumps(kwargs).encode())
         except:
             traceback.print_exc()

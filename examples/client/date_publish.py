@@ -1,23 +1,27 @@
 #!/usr/bin/env python3
 """Use the cellaserv client to send publish every second."""
 
+import asyncio
 import time
 
-from cellaserv.client import SynClient
+from cellaserv.client import Client
 
 
-class DatePublisher(SynClient):
-    def broadcast_time(self):
-        self.publish('time', str(time.time()).encode())
+class DatePublisher(Client):
+    def __init__(self):
+        super().__init__()
 
-    def run(self):
-        while not time.sleep(1):
-            self.broadcast_time()
+    def publish_time(self):
+        self.publish('time', now=time.time())
 
 
-def main():
+async def main():
     date = DatePublisher()
-    date.run()
+    await date.connect()
+    while True:
+        await asyncio.sleep(1)
+        date.publish_time()
+
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())

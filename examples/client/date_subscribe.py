@@ -1,24 +1,25 @@
 #!/usr/bin/env python3
-import asyncore
+
+import asyncio
 import time
 
-from cellaserv.client import AsynClient
-from cellaserv.settings import get_socket
+from cellaserv.client import Client
 
-class EpochDelta(AsynClient):
-    def __init__(self, sock):
-        super().__init__(sock)
 
-        self.add_subscribe_cb('time', self.on_time)
+class EpochDelta(Client):
+    def __init__(self):
+        super().__init__()
 
-    def on_time(self, pub):
-        epoch = float(pub.decode("utf8"))
-        print('{:3.3} msec'.format((time.time() - epoch) * 1000))
+    async def on_time(self, now):
+        print('{:3.3} msec'.format((time.time() - now) * 1000))
 
-def main():
-    with get_socket() as sock:
-        service = EpochDelta(sock)
-        asyncore.loop()
+
+async def main():
+    client = EpochDelta()
+    await client.connect()
+    client.subscribe("time", client.on_time)
+    await client.loop()
+
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

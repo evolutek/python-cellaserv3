@@ -1,44 +1,28 @@
 #!/usr/bin/env python3
 """
-Sample client, (a)synchronous time request to the date service through
-cellaserv.
+Sample date.time request through cellaserv using the Client class.
 """
 
-import asyncore
-import time
+import asyncio
 
-from cellaserv.settings import get_socket
-from cellaserv.client import AsynClient, SynClient
+from cellaserv.client import Client
 
-class TimeRequestClient:
+
+class TimeRequestClient(Client):
+    def __init__(self):
+        super().__init__()
+
     def time(self):
         return self.request('time', 'date')
 
-class AsynDateRequestClient(AsynClient, TimeRequestClient):
-    def __init__(self, sock):
-        super().__init__(sock=sock)
 
-    def on_reply(self, rep):
-        print("Time: {}".format(time.ctime(int(float(rep.data.decode("utf8"))))))
+async def main():
+    client = TimeRequestClient()
+    await client.connect()
+    asyncio.get_event_loop().create_task(client.loop())
+    for i in range(10):
+        print(await client.time())
 
-class SynDateRequestClient(SynClient, TimeRequestClient):
-    def __init__(self, sock):
-        super().__init__(sock=sock)
-
-def main():
-    print("[+] Testing synchronous client")
-    with get_socket() as sock:
-        client = SynDateRequestClient(sock)
-        for i in range(10):
-            print(client.time())
-
-    print("[+] Testing asynchronous client")
-    with get_socket() as sock:
-        client = AsynDateRequestClient(sock)
-        for i in range(10):
-            client.time()
-        print("===> Kill me after 10 replies. <===")
-        asyncore.loop()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

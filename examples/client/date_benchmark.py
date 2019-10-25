@@ -3,20 +3,27 @@
 Sample client, synchronous time request to the date service through cellaserv.
 """
 
+import asyncio
 import time
 
-from cellaserv.client import SynClient
-from cellaserv.settings import get_socket
+from cellaserv.client import Client
 
 WORKERS = 50
 REQUESTS_BY_WORKER = 1000
 
 
+async def tb(n):
+    client = Client()
+    await client.connect()
+    asyncio.create_task(client.loop())
+    reps = []
+    for _ in range(n):
+        reps.append(client.request('time', 'date'))
+    await asyncio.gather(*reps)
+
+
 def run_client(n):
-    with get_socket() as sock:
-        client = SynClient(sock)
-        for _ in range(n):
-            client.request('time', 'date')
+    asyncio.run(tb(n))
 
 
 def main():

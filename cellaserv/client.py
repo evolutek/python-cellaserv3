@@ -6,17 +6,13 @@ high level API you should use ``cellaserv.service.Service``.
 Sample usage is provided in the ``example/`` folder of the source distribution.
 """
 
-import asynchat
-import fnmatch
 import functools
+import asyncio
 import json
 import logging
 import random
 import struct
-import threading
 import traceback
-from collections import deque
-
 from collections import defaultdict
 
 from google.protobuf.text_format import MessageToString
@@ -24,7 +20,7 @@ from google.protobuf.text_format import MessageToString
 from cellaserv.protobuf.cellaserv_pb2 import (Message, Register, Request,
                                               Reply, Publish, Subscribe)
 
-from cellaserv.settings import DEBUG, get_socket
+from cellaserv.settings import DEBUG, get_connection
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG if DEBUG >= 2 else logging.INFO if DEBUG ==
@@ -34,6 +30,7 @@ logger.setLevel(logging.DEBUG if DEBUG >= 2 else logging.INFO if DEBUG ==
 
 
 class ReplyError(Exception):
+    """Indicate that the reply contains an error."""
     def __init__(self, rep):
         self.rep = rep
 
@@ -42,14 +39,17 @@ class ReplyError(Exception):
 
 
 class RequestTimeout(ReplyError):
+    """Indicate that the request has timed out."""
     pass
 
 
 class BadArguments(ReplyError):
+    """Indicate that the request arguments were invalid."""
     pass
 
 
 class NoSuchService(Exception):
+    """Indicate that the requested service was not found in the client."""
     def __init__(self, service):
         self.service = service
 
@@ -58,6 +58,8 @@ class NoSuchService(Exception):
 
 
 class NoSuchIdentification(Exception):
+    """Indicate that the requested service identification was not found in the
+    client."""
     def __init__(self, service, identification):
         self.service = service
         self.identification = identification
@@ -68,6 +70,7 @@ class NoSuchIdentification(Exception):
 
 
 class NoSuchMethod(Exception):
+    """Indicate that the service does not have the requested method."""
     def __init__(self, service, method):
         self.service = service
         self.method = method
@@ -76,24 +79,111 @@ class NoSuchMethod(Exception):
         return "No such method: {0}.{1}".format(self.service, self.method)
 
 
-# Clients
-
-
-class AbstractClient:
-    """Abstract client. Send protobuf messages."""
-
+class Client:
+    """Low level cellaserv client. Sends and receives protobuf messages."""
     def __init__(self):
         # Nonce used to identify requests
         self._request_seq_id = random.randrange(0, 2**32)
 
+        # These variables are initialized in connect()
+        self._loop = None
+        self._conn_read = None
+        self._conn_write = None
+        self._connected = False
+        self._requests_in_flight = {}
+        self._subscribes = defaultdict(list)
+
+    async def connect(self, conn=None, loop=None):
+        """Establish a connection to cellaserv.
+
+        Host and port are determined by the cellaserv.settings module, or by
+        the ``conn`` parameter, if provided.
+        """
+        self._loop = loop or asyncio.get_running_loop()
+        self._conn_read, self._conn_write = conn or await get_connection(
+            self._loop)
+        self._connected = True
+
+    async def loop(self):
+        # Ensure that we have a connection
+        if not self._connected:
+            self.connect()
+        await self._read_messages()
+
+    async def _read_messages(self):
+        # Busy loop
+        while True:
+            msg = await self._read_message()
+            self._on_msg_received(msg)
+
+    async def _read_message(self):
+        """Read one message. Wire format is 4-byte size, then data."""
+        header = await self._conn_read.read(4)
+        msg_len = struct.unpack("!I", header)[0]
+        msg_bytes = await self._conn_read.read(msg_len)
+        msg = Message()
+        msg.ParseFromString(msg_bytes)
+        return msg
+
+    def _on_msg_received(self, msg):
+        """Handle a cellaserv message."""
+        logger.debug("Received:\n%s", msg)
+        if msg.type == Message.Request:
+            payload = Request()
+            coro = self.on_request
+        elif msg.type == Message.Reply:
+            payload = Reply()
+            coro = self.on_reply
+        elif msg.type == Message.Publish:
+            payload = Publish()
+            coro = self.on_publish
+        else:
+            logger.warning("Unknown message type:\n%s", MessageToString(msg))
+            return
+
+        # Parse protobuf message
+        payload.ParseFromString(msg.content)
+        # Schedule handling of message
+        self._loop.create_task(coro(payload))
+
+    async def on_request(self, req):
+        # To be implemented by the service
+        pass
+
+    async def on_reply(self, reply):
+        try:
+            request, reply_future = self._requests_in_flight.pop(reply.id)
+        except KeyError:
+            log.warning("Unknown request ID for reply: \n%s", reply)
+            return
+
+        if reply.error.type != Reply.Error.NoError:
+            logger.error("[Reply] Received error")
+            if reply.error.type == Reply.Error.Timeout:
+                reply_future.set_exception(RequestTimeout(reply))
+            elif reply.error.type == Reply.Error.NoSuchService:
+                reply_future.set_exception(NoSuchService(request.service_name))
+            elif reply.error.type == Reply.Error.InvalidIdentification:
+                reply_future.set_exception(
+                    NoSuchIdentification(request.service_name,
+                                         request.service_identification))
+            elif reply.error.type == Reply.Error.NoSuchMethod:
+                reply_future.set_exception(
+                    NoSuchMethod(request.service, request.method))
+            elif reply.error.type == Reply.Error.BadArguments:
+                reply_future.set_exception(BadArguments(reply))
+            else:
+                reply_future.set_exception(ReplyError(reply))
+            return
+
+        reply_future.set_result(reply.data)
+
     def send_message(self, msg):
+        """Send a cellaserv Message protobuf message."""
         logger.debug("Sending:\n%s", msg)
-
-        self._send_message(msg=msg.SerializeToString())
-
-    def _send_message(self, *args, **kwargs):
-        """Implementation specific method for sending messages."""
-        raise NotImplementedError
+        msg_data = msg.SerializeToString()
+        msg_size_data = struct.pack("!I", len(msg_data))
+        self._conn_write.write(msg_size_data + msg_data)
 
     def reply_to(self, req, data=None):
         """
@@ -131,9 +221,7 @@ class AbstractClient:
         msg.content = reply.SerializeToString()
         self.send_message(msg)
 
-    # Actions
-
-    def register(self, name, identification=None):
+    async def register(self, name, identification=None):
         """
         Send a ``register`` message.
 
@@ -145,17 +233,22 @@ class AbstractClient:
         if identification:
             register.identification = identification
 
-        message = Message(
-            type=Message.Register, content=register.SerializeToString())
+        message = Message(type=Message.Register,
+                          content=register.SerializeToString())
 
         self.send_message(message)
 
-    def request(self, method, service, *, identification=None, data=None):
+    async def request(self,
+                      method,
+                      service,
+                      *,
+                      identification=None,
+                      data=None):
         """
         Send a ``request`` message.
 
         :param str method: The name of the method.
-        :param str service: The name of th service.
+        :param str service: The name of the service.
         :return: The id of the message that was sent. Used for tracking the
             reply.
         :rtype: int
@@ -163,7 +256,6 @@ class AbstractClient:
 
         logger.info("[Request] %s/%s.%s(%s)", service, identification, method,
                     data)
-
         request = Request(service_name=service, method=method)
         if identification:
             request.service_identification = identification
@@ -172,278 +264,66 @@ class AbstractClient:
         request.id = self._request_seq_id
         self._request_seq_id += 1
 
-        message = Message(
-            type=Message.Request, content=request.SerializeToString())
+        message = Message(type=Message.Request,
+                          content=request.SerializeToString())
 
+        # Create a future that will hold the reply in the result
+        self._requests_in_flight[
+            request.id] = request, self._loop.create_future()
         self.send_message(message)
+        return await self._requests_in_flight[request.id][1]
 
-        return request.id
+    def log_exc(self):
+        """Log the current exception."""
 
-    def publish(self, event, data=None):
+        str_stack = "".join(traceback.format_exc())
+        self.publish(event="log.error", data=str_stack.encode())
+
+    def publish(self, event, **kwargs):
         """
         Send a ``publish`` message.
 
-        :param event str: The event name
-        :param data bytes: Optional data sent with the event
+        :param event str: The event name.
+        :param **kwargs: Optional key=value data sent with the event.
         """
 
-        logger.info("[Publish] %s(%s)", event, data)
+        logger.info("[Publish] %s(%s)", event, kwargs)
 
         publish = Publish(event=event)
-        if data:
-            publish.data = data
+        try:
+            data = json.dumps(kwargs)
+        except:
+            logging.error("Could not serialize publish data: %s", pub_data)
+            data = repr(pub_data)
+        publish.data = json.dumps(kwargs).encode()
 
-        message = Message(
-            type=Message.Publish, content=publish.SerializeToString())
+        message = Message(type=Message.Publish,
+                          content=publish.SerializeToString())
 
         self.send_message(message)
 
-    def subscribe(self, event):
+    async def on_publish(self, pub):
+        logging.info("[Subscribe] Received %s", pub.event)
+
+        # Decode published data
+        payload = json.loads(pub.data.decode())
+        for cb in self._subscribes[pub.event]:
+            logging.debug("[Subscribe] Calling %r(%r)", cb, payload)
+            asyncio.create_task(cb(**payload))
+
+    def subscribe(self, event, cb=None):
         """
         Send a ``subscribe`` message.
 
-        :param str event: The name of the event
+        :param str event: The name of the event.
+        :param cb func or coro: Callback when the event is received.
         """
 
         logger.info("[Subscribe] %s", event)
 
         subscribe = Subscribe(event=event)
-
-        message = Message(
-            type=Message.Subscribe, content=subscribe.SerializeToString())
-
+        message = Message(type=Message.Subscribe,
+                          content=subscribe.SerializeToString())
+        if cb is not None:
+            self._subscribes[event].append(cb)
         self.send_message(message)
-
-
-class SynClient(AbstractClient):
-    """
-    Synchronous (aka. blocking) cellaserv client.
-
-    Wait for ``reply`` after every ``request`` message.
-    """
-
-    def __init__(self, sock=None):
-        super().__init__()
-
-        self._socket = sock or get_socket()
-        self.missed_msg = deque()
-
-    def _send_message(self, msg):
-        self._socket.send(struct.pack("!I", len(msg)) + msg)
-
-    def read_message(self, reply=False):
-        """Read a message from the socket or the missed message queue."""
-        # Check if missed message queue is empty
-        if len(self.missed_msg) > 0 and reply == False:
-            return self.missed_msg.pop()
-        # Receive message header
-        hdr = self._socket.recv(4)
-        # Header is the size of the message as a uint32 in network byte order
-        msg_len = struct.unpack("!I", hdr)[0]
-
-        # Receive message, which may be in multiple packets so use a loop
-        msg = b""
-        while msg_len != 0:
-            buf = self._socket.recv(msg_len)
-            msg_len -= len(buf)
-            msg += buf
-
-        # Parse message
-        message = Message()
-        message.ParseFromString(msg)
-
-        return message
-
-    # Actions
-
-    def request(self, method, service, identification=None, data=None):
-        """
-        Send a blocking ``request``.
-
-        Send the ``request`` message, then wait for the reply.
-        """
-
-        # Send the request
-        req_id = super().request(
-            method=method,
-            service=service,
-            identification=identification,
-            data=data)
-
-        # Wait for response
-        while True:
-            message = self.read_message(reply=True)
-
-            if message.type != Message.Reply:
-                # Currentyle Dropping non-reply is not an issue as the
-                # SynClient is only used to send queries
-                logger.debug(
-                    "[Request] Non Reply message queued for future use")
-                self.missed_msg.append(message)
-                continue
-
-            # Parse reply
-            reply = Reply()
-            reply.ParseFromString(message.content)
-
-            if reply.id != req_id:
-                logger.warning("[Request] Dropping Reply for the wrong "
-                               "request: " + MessageToString(reply))
-                continue
-
-            # Check if reply is an error
-            if reply.error.type != Reply.Error.NoError:
-                logger.error("[Reply] Received error")
-                if reply.error.type == Reply.Error.Timeout:
-                    raise RequestTimeout(reply)
-                elif reply.error.type == Reply.Error.NoSuchService:
-                    raise NoSuchService(service)
-                elif reply.error.type == Reply.Error.InvalidIdentification:
-                    raise NoSuchIdentification(service, identification)
-                elif reply.error.type == Reply.Error.NoSuchMethod:
-                    raise NoSuchMethod(service, method)
-                elif reply.error.type == Reply.Error.BadArguments:
-                    raise BadArguments(reply)
-                else:
-                    raise ReplyError(reply)
-
-            logger.debug("Received:\n%s", MessageToString(reply))
-
-            return reply.data if reply.data else None
-
-
-class AsynClient(asynchat.async_chat, AbstractClient):
-    """Asynchronous cellaserv client."""
-
-    def __init__(self, sock=None):
-        self._socket = sock or get_socket()
-
-        # Init base classes
-        asynchat.async_chat.__init__(self, sock=self._socket)
-        AbstractClient.__init__(self)
-
-        self.push_lock = threading.Lock()
-
-        # setup asynchat
-        self.set_terminator(4)  # first, we are looking for a message header
-
-        # hold incoming data
-        self._ibuffer = bytearray()
-        self._read_header = True
-
-        # map events to a list of callbacks
-        self._events_cb = defaultdict(list)
-        self._events_pattern_cb = defaultdict(list)
-
-    def _send_message(self, msg):
-        # 'push' is asynchat version of socket.send
-        with self.push_lock:
-            self.push(struct.pack("!I", len(msg)) + msg)
-
-    # Asyncore methods
-
-    def collect_incoming_data(self, data):
-        """Store incoming data in the buffer."""
-        self._ibuffer.extend(data)
-
-    def found_terminator(self):
-        """Process an incoming header or message."""
-
-        if self._read_header:
-            self._read_header = False
-
-            msg_len = struct.unpack("!I", self._ibuffer)[0]
-            self.set_terminator(msg_len)
-
-            self._ibuffer = bytearray()
-        else:
-            self._read_header = True
-            self.set_terminator(4)
-
-            msg = Message()
-            msg.ParseFromString(bytes(self._ibuffer))
-
-            self._ibuffer = bytearray()
-
-            self.on_message_recieved(msg)
-
-    # Methods called by subclasses
-
-    def event_wrap(self, callback):
-        """Wrap the event callback to decode json"""
-        @functools.wraps(callback)
-        def _wrap(data=None):
-            """called by cellaserv.client.AsynClient"""
-            if data:
-                kwargs = json.loads(data.decode())
-            else:
-                kwargs = {}
-            logger.debug("Publish callback: %s(%s)", callback.__name__, kwargs)
-
-            try:
-                callback(**kwargs)
-            except:
-                str_stack = "".join(traceback.format_exc())
-                logger.error(
-                    "Exception during callback: %s",
-                    str_stack,
-                    exc_info=True)
-        return _wrap
-
-
-    def add_subscribe_cb(self, event, event_cb):
-        """On event ``event`` recieved, call ``event_cb``"""
-        self._events_cb[event].append(self.event_wrap(event_cb))
-        self.subscribe(event)
-
-    def add_subscribe_pattern_cb(self, pattern, event_cb):
-        """On event ``event`` recieved, call ``event_cb``"""
-        self._events_pattern_cb[pattern].append(self.event_wrap(event_cb))
-        self.subscribe(pattern)
-
-    # Callbacks
-
-    def on_message_recieved(self, msg):
-        """Called on incoming message from cellaserv."""
-        if msg.type == Message.Request:
-            req = Request()
-            req.ParseFromString(msg.content)
-            self.on_request(req)
-        elif msg.type == Message.Reply:
-            rep = Reply()
-            rep.ParseFromString(msg.content)
-            self.on_reply(rep)
-        elif msg.type == Message.Publish:
-            pub = Publish()
-            pub.ParseFromString(msg.content)
-
-            # Basic subscriptions
-            for cb in self._events_cb[pub.event]:
-                try:
-                    if pub.data:
-                        cb(pub.data)
-                    else:
-                        cb()
-                except Exception as e:
-                    logger.error(
-                        "Exception during %s",
-                        MessageToString(msg),
-                        exc_info=True)
-
-            # Pattern subscriptions
-            for pattern, cb_list in self._events_pattern_cb.items():
-                if fnmatch.fnmatch(pub.event, pattern):
-                    for cb in cb_list:
-                        if pub.data:
-                            cb(pub.data, event=pub.event)
-                        else:
-                            cb(event=pub.event)
-
-        else:
-            logger.warning("Invalid message:\n%s", MessageToString(msg))
-
-    def on_request(self, req):
-        pass
-
-    def on_reply(self, rep):
-        pass

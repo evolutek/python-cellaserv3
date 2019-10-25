@@ -1,33 +1,35 @@
 #!/usr/bin/env python3
 
+import asyncio
 import time
 
 from cellaserv.service import Service
 
 
 class Date(Service):
-
     @Service.action
-    def time(self):
+    async def time(self):
         return {'time': int(time.time())}
 
     @Service.action("print_time")
-    def print(self):
+    async def print(self):
         print(time.time())
 
     @Service.event("hello")
-    def say(self, what="world"):
+    async def say(self, what="world"):
         print("hello", what)
 
-    @Service.thread
-    def loop(self):
-        while not time.sleep(3):
+    @Service.coro
+    async def loop(self):
+        while True:
             self.log(time=time.time())
+            await asyncio.sleep(3)
 
 
 def main():
     date_service = Date()
     date_service.run()
+
 
 if __name__ == "__main__":
     main()

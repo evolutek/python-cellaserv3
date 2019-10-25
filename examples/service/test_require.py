@@ -15,8 +15,13 @@ class ServiceB(Service):
     pass
 
 
-@Service.require('test', identification='42')
+@Service.require('servicetest', identification='42')
 class ServiceC(Service):
+    pass
+
+
+@Service.require('not_a_service')
+class ServiceD(Service):
     pass
 
 
@@ -39,6 +44,11 @@ def service_c():
     service_c.run()
 
 
+def service_d():
+    service_d = ServiceD()
+    service_d.run()
+
+
 def service_test():
     test = ServiceTest(identification='12')
     test.run()
@@ -51,14 +61,16 @@ def service_test2():
 
 def test_require():
     processes = [
-        Process(target=target) for target in
-        [service_a, service_b, service_c, service_test, service_test2]
+        Process(target=target) for target in [
+            service_a, service_b, service_c, service_d, service_test,
+            service_test2
+        ]
     ]
 
     for p in processes:
         p.start()
 
-    time.sleep(.2)
+    time.sleep(2)
 
     for p in processes:
         p.terminate()
