@@ -32,3 +32,4 @@ Run:
 - Benoît Reitz, Evolutek 2013-2015
 - Adrien Schildknecht, Evolutek 2013-2015
 - Vincent Gatine, Evolutek 2014-2015
+- Corentin Vigourt, Evolutek 2014-2020
