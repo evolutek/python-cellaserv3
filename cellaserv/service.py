@@ -885,7 +885,10 @@ class Service(AsynClient, metaclass=ServiceMeta):
         # Register the service last
         self.register(self.service_name, self.identification)
 
-        # Start threads
+    def launch_threads(self):
+        """
+        Launch each thread of the service
+        """
         for method in self._threads:
             # Bind method to the current instance
             bound_method = method.__get__(self, type(self))
@@ -899,6 +902,7 @@ class Service(AsynClient, metaclass=ServiceMeta):
         """
         Sugar for starting the service.
         """
+        self.launch_threads()
         Service.loop()
 
     @staticmethod
@@ -908,4 +912,5 @@ class Service(AsynClient, metaclass=ServiceMeta):
         started another thread, only callbacks (eg. actions, events) will be
         called.
         """
+        self.launch_threads()
         asyncore.loop()
