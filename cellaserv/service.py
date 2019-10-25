@@ -860,27 +860,12 @@ class Service(AsynClient, metaclass=ServiceMeta):
         def _event_wrap(fun):
             """Convert event data (raw bytes) to arguments for methods."""
 
-            def _wrap(data=None):
-                """called by cellaserv.client.AsynClient"""
-                if data:
-                    kwargs = json.loads(data.decode())
-                else:
-                    kwargs = {}
-                logger.debug("Publish callback: %s(%s)", fun.__name__, kwargs)
-
-                try:
-                    fun(**kwargs)
-                except:
-                    self.log_exc()
-
-            return _wrap
-
         super().__init__(self._socket)
 
         # Subsribe to all events
         for event_name, callback in self._events.items():
             callback_bound = callback.__get__(self, type(self))
-            self.add_subscribe_cb(event_name, _event_wrap(callback_bound))
+            self.add_subscribe_cb(event_name, callback_bound)
 
         # Register the service last
         self.register(self.service_name, self.identification)

@@ -8,6 +8,7 @@ Sample usage is provided in the ``example/`` folder of the source distribution.
 
 import asynchat
 import fnmatch
+import json
 import logging
 import random
 import struct
@@ -367,13 +368,51 @@ class AsynClient(asynchat.async_chat, AbstractClient):
     # Methods called by subclasses
 
     def add_subscribe_cb(self, event, event_cb):
+
+        def _event_wrap(fun):
+            """Convert event data (raw bytes) to arguments for methods."""
+
+            def _wrap(data=None):
+                """called by cellaserv.client.AsynClient"""
+                if data:
+                    kwargs = json.loads(data.decode())
+                else:
+                    kwargs = {}
+                logger.debug("Publish callback: %s(%s)", fun.__name__, kwargs)
+
+                try:
+                    fun(**kwargs)
+                except:
+                    self.log_exc()
+
+            return _wrap
+
         """On event ``event`` recieved, call ``event_cb``"""
-        self._events_cb[event].append(event_cb)
+        self._events_cb[event].append(_event_wrap(event_cb))
         self.subscribe(event)
 
     def add_subscribe_pattern_cb(self, pattern, event_cb):
+
+        def _event_wrap(fun):
+            """Convert event data (raw bytes) to arguments for methods."""
+
+            def _wrap(data=None):
+                """called by cellaserv.client.AsynClient"""
+                if data:
+                    kwargs = json.loads(data.decode())
+                else:
+                    kwargs = {}
+                logger.debug("Publish callback: %s(%s)", fun.__name__, kwargs)
+
+                try:
+                    fun(**kwargs)
+                except:
+                    self.log_exc()
+
+            return _wrap
+
         """On event ``event`` recieved, call ``event_cb``"""
-        self._events_pattern_cb[pattern].append(event_cb)
+        self._events_pattern_cb[pattern].append(_event_wrap(event_cb))
         self.subscribe(pattern)
 
     # Callbacks
