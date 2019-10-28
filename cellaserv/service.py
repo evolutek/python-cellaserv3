@@ -912,5 +912,4 @@ class Service(AsynClient, metaclass=ServiceMeta):
         started another thread, only callbacks (eg. actions, events) will be
         called.
         """
-        self.launch_threads()
         asyncore.loop()
