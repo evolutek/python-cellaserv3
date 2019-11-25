@@ -8,12 +8,13 @@ Sample usage is provided in the ``example/`` folder of the source distribution.
 
 import asynchat
 import fnmatch
-from functools import wraps
+import functools
 import json
 import logging
 import random
 import struct
 import threading
+import traceback
 from collections import deque
 
 from collections import defaultdict
@@ -370,7 +371,7 @@ class AsynClient(asynchat.async_chat, AbstractClient):
 
     def event_wrap(self, callback):
         """Wrap the event callback to decode json"""
-        @wraps(callback)
+        @functools.wraps(callback)
         def _wrap(data=None):
             """called by cellaserv.client.AsynClient"""
             if data:
@@ -382,7 +383,11 @@ class AsynClient(asynchat.async_chat, AbstractClient):
             try:
                 callback(**kwargs)
             except:
-                self.log_exc()
+                str_stack = "".join(traceback.format_exc())
+                logger.error(
+                    "Exception during callback: %s",
+                    str_stack,
+                    exc_info=True)
         return _wrap
 
 

@@ -857,9 +857,6 @@ class Service(AsynClient, metaclass=ServiceMeta):
         event loop, and have requests, events, etc. dispatched to it.
         """
 
-        def _event_wrap(fun):
-            """Convert event data (raw bytes) to arguments for methods."""
-
         super().__init__(self._socket)
 
         # Subsribe to all events
