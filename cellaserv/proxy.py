@@ -99,6 +99,6 @@ class CellaservProxy:
         :param kwargs dict: Optional data sent with the event.
         """
         try:
-            self._client.publish(event=event, data=json.dumps(kwargs).encode())
+            self._client.publish(event=event, **kwargs)
         except:
             traceback.print_exc()

@@ -293,8 +293,8 @@ class Client:
         try:
             data = json.dumps(kwargs)
         except:
-            logging.error("Could not serialize publish data: %s", pub_data)
-            data = repr(pub_data)
+            logging.error("Could not serialize publish data: %s", kwargs)
+            data = repr(kwargs)
         publish.data = json.dumps(kwargs).encode()
 
         message = Message(type=Message.Publish,
