@@ -32,9 +32,14 @@ make_setting('PORT', 4200, 'client', 'port', 'CS_PORT', int)
 make_setting('DEBUG', 0, 'client', 'debug', 'CS_DEBUG', int)
 
 
-def get_connection(loop):
+async def get_connection(loop):
     """Open a socket to cellaserv using user configuration."""
-    return asyncio.open_connection(HOST, PORT, loop=loop)
+    while True:
+        try:
+            return await asyncio.open_connection(HOST, PORT, loop=loop)
+        except OSError:
+            logger.warn("Could not connect to cellaserv: %s:%s", HOST, PORT)
+            await asyncio.sleep(1)
 
 
 logger = make_logger(__name__)
