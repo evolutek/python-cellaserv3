@@ -12,7 +12,7 @@ setup(
     author_email='evolutek@googlegroups.com',
     install_requires=open('requirements.txt').read().splitlines(),
     packages=['cellaserv', 'cellaserv.protobuf'],
-    test_requires=['pytest', 'pytest-timeout'],
+    tests_require=['pytest', 'pytest-timeout'],
     classifiers=[
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
