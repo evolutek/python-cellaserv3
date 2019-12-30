@@ -543,7 +543,7 @@ class Service(Client, metaclass=ServiceMeta):
 
     # Default actions
 
-    def help(self) -> dict:
+    async def help(self) -> dict:
         """
         Help about this service.
 
@@ -580,13 +580,13 @@ class Service(Client, metaclass=ServiceMeta):
             docs[name] = {"doc": doc, "sig": sig}
         return docs
 
-    def help_actions(self) -> dict:
+    async def help_actions(self) -> dict:
         """List available actions for this service."""
         return self._get_help(self._actions)
 
     help_actions._actions = ["help_actions"]
 
-    def help_events(self) -> dict:
+    async def help_events(self) -> dict:
         """List subscribed events of this service."""
         return self._get_help(self._events)
 
