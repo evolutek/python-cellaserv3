@@ -26,7 +26,7 @@ async def main():
     client = DateService()
     await client.connect()
     await client.register("date")
-    await client.loop()
+    await client.handle_messages()
 
 
 if __name__ == "__main__":

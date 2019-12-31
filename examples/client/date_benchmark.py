@@ -15,7 +15,7 @@ REQUESTS_BY_WORKER = 1000
 async def tb(n):
     client = Client()
     await client.connect()
-    asyncio.create_task(client.loop())
+    asyncio.create_task(client.handle_messages())
     reps = []
     for _ in range(n):
         reps.append(client.request('time', 'date'))

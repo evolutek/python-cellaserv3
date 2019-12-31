@@ -61,17 +61,17 @@ Service.loop().
 
 Example usage:
 
+    >>> import asyncio
     >>> from cellaserv.service import Service
     >>> class Bar(Service):
     ...     def __init__(self, id):
-    ...         super().__init__(identification=id)
+    ...         super().__init__(identification=str(id))
     ...
     ...     @Service.action
     ...     async def bar(self):
     ...         print(self.identification)
     ...
-    >>> services = [Bar(i) for i in range(10)]
-    >>> Service.loop()
+    >>> Service.loop([Bar(i) for i in range(10)])
 
 Dependencies
 ------------
@@ -476,7 +476,20 @@ class Service(Client, metaclass=ServiceMeta):
         method._coro = True
         return method
 
+    @classmethod
+    def loop(kls, services):
+        """Wait for multiple services."""
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(kls._loop(services))
+        loop.close()
+
+    @classmethod
+    async def _loop(kls, services):
+        await asyncio.wait([service.done() for service in services])
+
     # Instantiated class land
+    async def done(self):
+        await self._disconnect
 
     async def on_request(self, req):
         """
@@ -552,8 +565,8 @@ class Service(Client, metaclass=ServiceMeta):
         """
         docs = {}
         docs["doc"] = inspect.getdoc(self)
-        docs["actions"] = self.help_actions()
-        docs["events"] = self.help_events()
+        docs["actions"] = await self.help_actions()
+        docs["events"] = await self.help_events()
         return docs
 
     help._actions = ["help"]
@@ -594,13 +607,13 @@ class Service(Client, metaclass=ServiceMeta):
 
     # Note: we cannot use @staticmethod here because the descriptor it creates
     # is shadowing the attribute we add to the method.
-    def kill(self) -> "Does not return.":
+    async def kill(self) -> "Does not return.":
         """Kill the service."""
-        os.kill(os.getpid(), 9)
+        self._disconnect.set_result(True)
 
     kill._actions = ["kill"]
 
-    def stacktraces(self) -> dict:
+    async def stacktraces(self) -> dict:
         """Return a stacktrace for each thread running."""
         ret = {}
         for thread_id, stack in sys._current_frames().items():
@@ -645,11 +658,9 @@ class Service(Client, metaclass=ServiceMeta):
         _setup() will use the socket connected to cellaserv to initialize the
         service.
         """
-
-        await self.connect()
-
         # Start accepting messages
-        asyncio.create_task(self._read_messages())
+        asyncio.create_task(self.handle_messages())
+        await self._connected
 
         await self._wait_for_dependencies()
         await self._setup_config_vars()

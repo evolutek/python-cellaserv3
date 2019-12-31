@@ -20,7 +20,7 @@ async def main():
     service = DateService()
     await service.connect()
     await service.register('date')
-    await service.loop()
+    await service.handle_messages()
 
 
 if __name__ == "__main__":

@@ -14,14 +14,9 @@ class Ax(Service):
         self._angle = int(angle)
 
 
-async def main():
-    services = []
-    for i in range(10):
-        services.append(Ax(i))
-
-    while True:
-        await asyncio.sleep(1)
+def main():
+    Service.loop([Ax(i) for i in range(10)])
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

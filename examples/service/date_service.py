@@ -20,7 +20,7 @@ class Date(Service):
         print("hello", what)
 
     @Service.coro
-    async def loop(self):
+    async def timer(self):
         while True:
             self.log(time=time.time())
             await asyncio.sleep(3)

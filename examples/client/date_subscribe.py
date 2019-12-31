@@ -18,7 +18,7 @@ async def main():
     client = EpochDelta()
     await client.connect()
     client.subscribe("time", client.on_time)
-    await client.loop()
+    await client.handle_messages()
 
 
 if __name__ == "__main__":

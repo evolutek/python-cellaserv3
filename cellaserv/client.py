@@ -87,11 +87,17 @@ class Client:
 
         # These variables are initialized in connect()
         self._loop = None
+        # Pipes to the cellaserv message broker
         self._conn_read = None
         self._conn_write = None
-        self._connected = False
+        # The client is connected
+        self._connected = asyncio.Future()
+        # Requests made by this client waiting for a response
         self._requests_in_flight = {}
+        # Topic subscribed to by this client
         self._subscribes = defaultdict(list)
+        # Set this future to disconnect the client.
+        self._disconnect = asyncio.Future()
 
     async def connect(self, conn=None, loop=None):
         """Establish a connection to cellaserv.
@@ -102,28 +108,37 @@ class Client:
         self._loop = loop or asyncio.get_running_loop()
         self._conn_read, self._conn_write = conn or await get_connection(
             self._loop)
-        self._connected = True
+        self._connected.set_result(True)
+        self._loop.create_task(self.disconnect())
 
-    async def loop(self):
+    async def disconnect(self):
+        await self._disconnect
+        self._conn_write.close()
+
+    async def handle_messages(self):
         # Ensure that we have a connection
-        if not self._connected:
-            self.connect()
-        await self._read_messages()
+        if not self._connected.done():
+            await self.connect()
 
-    async def _read_messages(self):
-        # Busy loop
-        while True:
-            msg = await self._read_message()
+        # Read all messages
+        async for msg in self._read_messages():
             self._on_msg_received(msg)
 
-    async def _read_message(self):
+    async def _read_messages(self):
         """Read one message. Wire format is 4-byte size, then data."""
-        header = await self._conn_read.read(4)
-        msg_len = struct.unpack("!I", header)[0]
-        msg_bytes = await self._conn_read.read(msg_len)
-        msg = Message()
-        msg.ParseFromString(msg_bytes)
-        return msg
+        while True:
+            header = await self._conn_read.read(4)
+            if len(header) == 0:
+                if self._disconnect.done():
+                    # Client was disconnected
+                    return
+                else:
+                    continue
+            msg_len = struct.unpack("!I", header)[0]
+            msg_bytes = await self._conn_read.read(msg_len)
+            msg = Message()
+            msg.ParseFromString(msg_bytes)
+            yield msg
 
     def _on_msg_received(self, msg):
         """Handle a cellaserv message."""
