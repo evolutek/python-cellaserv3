@@ -735,6 +735,7 @@ class Service(Client, metaclass=ServiceMeta):
 
         await self._start_coros()
 
+        self.status = "Ready"
         logger.info("Service running!")
 
     async def _setup_config_vars(self):
@@ -782,7 +783,7 @@ class Service(Client, metaclass=ServiceMeta):
 
             async def wait_for_dependencies(self):
                 # Ensure the client loop is started
-                asyncio.create_task(self._read_messages())
+                asyncio.create_task(self.handle_messages())
 
                 # First register for new services, so that we don't miss a service
                 # if it registers just after the 'list_services' call.
@@ -820,10 +821,7 @@ class Service(Client, metaclass=ServiceMeta):
 
         client = DependencyWaitingClient(self._service_dependencies)
         await client.connect()
-        self.status = "Waiting for dependencies: {}".format(
-            self._service_dependencies)
         await client.wait_for_dependencies()
-        self.status = "Ready"
 
     async def _setup_variables(self):
         """

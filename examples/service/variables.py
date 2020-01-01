@@ -11,14 +11,6 @@ class Foo(Service):
     def __init__(self):
         super().__init__()
 
-    @Service.coro
-    async def test(self):
-        while True:
-            # Update variable value
-            self.avar = "42"
-            print(self.cvar)
-            await asyncio.sleep(1)
-
 
 def main():
     foo = Foo()
