@@ -51,6 +51,13 @@ The Service.coro() tasks are started.
 Service registers itself on cellaserv and becomes available to other cellaserv
 client.
 
+Service status
+--------------
+
+All service instance can set their "status" using self.status = "the service
+status". Tools like the cellaserv dashboard can then query the service status
+using the "list_variables" query of the service.
+
 Starting more than one service
 ------------------------------
 
@@ -191,6 +198,51 @@ class Event:
         return self.data
 
 
+class Variable:
+    """
+    Variables setups a cellaserv-exported variable for this service.
+
+    Variable value updates are propagated using pubsub: on update, an event
+    matching the variable name is published. The message must be a valid json
+    object of the form: {'value': NEW VALUE}.
+
+    Example::
+
+        >>> from cellaserv.service import Service, Variable
+        >>> class Foo(Service):
+        ...     empty_var = Variable()
+        ...     with_value = Variable("default_value")
+
+    TODO: make ConfigVariable a child class of Variable
+    """
+    def __init__(self, default="", name=None):
+        self._value = default
+        self._name = name
+
+    def __set_name__(self, owner, name):
+        try:
+            service_variables = getattr(owner, '_variables')
+        except AttributeError:
+            service_variables = {}
+            setattr(owner, '_variables', service_variables)
+        service_variables[name] = self
+        self._name = name
+
+    def __set__(self, service, value):
+        self._update(value)
+        service.publish(self._name, value=value)
+
+    def __get__(self, instance, owner):
+        del instance  # unused
+        return self._value
+
+    def _update(self, value):
+        self._value = value
+
+    def _set_name(self, name):
+        self._name = name
+
+
 class ConfigVariable:
     """
     ConfigVariable setup a variable using the 'config' service. It will always
@@ -313,13 +365,13 @@ class ServiceMeta(type):
             if hasattr(member, "_actions"):
                 for action in member._actions:
                     actions[action] = member
-            if hasattr(member, "_events"):
+            elif hasattr(member, "_events"):
                 for event in member._events:
                     events[event] = member
-            if hasattr(member, "_coro"):
+            elif hasattr(member, "_coro"):
                 coros.append(member)
 
-            if isinstance(member, ConfigVariable):
+            elif isinstance(member, ConfigVariable):
                 event_name = "config.{section}.{option}".format(
                     section=member.section, option=member.option)
                 events[event_name] = _config_var_wrap_event(member)
@@ -350,6 +402,9 @@ class Service(Client, metaclass=ServiceMeta):
     # Optional identification string used to register multiple instances of the
     # same service.
     identification = ""
+
+    # Service status
+    status = Variable("Not ready")
 
     def __init__(self, identification=""):
         super().__init__()
@@ -436,7 +491,7 @@ class Service(Client, metaclass=ServiceMeta):
     def event(method_or_name):
         """
         The method decorated with ``Service.event`` will be called when a event
-        matching its name (or argument passed to ``Service.event``) will be
+        matching its name (or argument passed to ``Service.event``) is
         received.
         """
         def _set_event(method, event):
@@ -555,7 +610,6 @@ class Service(Client, metaclass=ServiceMeta):
         self.reply_to(req, reply_data)
 
     # Default actions
-
     async def help(self) -> dict:
         """
         Help about this service.
@@ -567,6 +621,7 @@ class Service(Client, metaclass=ServiceMeta):
         docs["doc"] = inspect.getdoc(self)
         docs["actions"] = await self.help_actions()
         docs["events"] = await self.help_events()
+        docs["variables"] = await self.help_variables()
         return docs
 
     help._actions = ["help"]
@@ -604,6 +659,15 @@ class Service(Client, metaclass=ServiceMeta):
         return self._get_help(self._events)
 
     help_events._actions = ["help_events"]
+
+    async def list_variables(self) -> dict:
+        """List variables of this service."""
+        ret = {}
+        for variable in self._variables.values():
+            ret[variable._name] = variable._value
+        return ret
+
+    list_variables._actions = ["list_variables"]
 
     # Note: we cannot use @staticmethod here because the descriptor it creates
     # is shadowing the attribute we add to the method.
@@ -663,6 +727,7 @@ class Service(Client, metaclass=ServiceMeta):
         await self._connected
 
         await self._wait_for_dependencies()
+        await self._setup_variables()
         await self._setup_config_vars()
         await self._setup_events()
 
@@ -755,7 +820,29 @@ class Service(Client, metaclass=ServiceMeta):
 
         client = DependencyWaitingClient(self._service_dependencies)
         await client.connect()
+        self.status = "Waiting for dependencies: {}".format(
+            self._service_dependencies)
         await client.wait_for_dependencies()
+        self.status = "Ready"
+
+    async def _setup_variables(self):
+        """
+        Setup variables.
+        """
+        def _var_wrap_set(variable):
+            async def _var_set(self, value):
+                variable._update(value)
+
+            return _var_set
+
+        for var_name, variable in self._variables.items():
+            # Prefix the variable name with the service name
+            fq_var_name = self.service_name
+            if self.identification:
+                fq_var_name += "." + self.identification
+            fq_var_name += "." + var_name
+            variable._set_name(fq_var_name)
+            self._events[fq_var_name] = _var_wrap_set(variable)
 
     async def _setup_events(self):
         """
