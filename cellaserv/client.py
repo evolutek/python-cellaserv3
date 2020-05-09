@@ -8,10 +8,13 @@ Sample usage is provided in the ``example/`` folder of the source distribution.
 
 import asynchat
 import fnmatch
+import functools
+import json
 import logging
 import random
 import struct
 import threading
+import traceback
 from collections import deque
 
 from collections import defaultdict
@@ -366,14 +369,36 @@ class AsynClient(asynchat.async_chat, AbstractClient):
 
     # Methods called by subclasses
 
+    def event_wrap(self, callback):
+        """Wrap the event callback to decode json"""
+        @functools.wraps(callback)
+        def _wrap(data=None):
+            """called by cellaserv.client.AsynClient"""
+            if data:
+                kwargs = json.loads(data.decode())
+            else:
+                kwargs = {}
+            logger.debug("Publish callback: %s(%s)", callback.__name__, kwargs)
+
+            try:
+                callback(**kwargs)
+            except:
+                str_stack = "".join(traceback.format_exc())
+                logger.error(
+                    "Exception during callback: %s",
+                    str_stack,
+                    exc_info=True)
+        return _wrap
+
+
     def add_subscribe_cb(self, event, event_cb):
         """On event ``event`` recieved, call ``event_cb``"""
-        self._events_cb[event].append(event_cb)
+        self._events_cb[event].append(self.event_wrap(event_cb))
         self.subscribe(event)
 
     def add_subscribe_pattern_cb(self, pattern, event_cb):
         """On event ``event`` recieved, call ``event_cb``"""
-        self._events_pattern_cb[pattern].append(event_cb)
+        self._events_pattern_cb[pattern].append(self.event_wrap(event_cb))
         self.subscribe(pattern)
 
     # Callbacks
