@@ -4,6 +4,7 @@ import configparser
 import logging
 import os
 import socket
+import time
 
 logging.basicConfig()
 
@@ -35,8 +36,12 @@ make_setting('DEBUG', 0, 'client', 'debug', 'CS_DEBUG', int)
 
 def get_socket():
     """Open a socket to cellaserv using user configuration."""
-    return socket.create_connection((HOST, PORT))
-
+    while True:
+        try:
+            return socket.create_connection((HOST, PORT))
+        except OSError:
+            logger.warn("Could not connect to cellaserv: %s:%s", HOST, PORT)
+            time.sleep(1)
 
 logger = make_logger(__name__)
 logger.debug("DEBUG: %s", DEBUG)
