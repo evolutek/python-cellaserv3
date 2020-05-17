@@ -34,6 +34,12 @@ make_setting('PORT', 4200, 'client', 'port', 'CS_PORT', int)
 make_setting('DEBUG', 0, 'client', 'debug', 'CS_DEBUG', int)
 
 
+logger = make_logger(__name__)
+logger.debug("DEBUG: %s", DEBUG)
+logger.debug("HOST: %s", HOST)
+logger.debug("PORT: %s", PORT)
+
+
 def get_socket():
     """Open a socket to cellaserv using user configuration."""
     while True:
@@ -42,8 +48,3 @@ def get_socket():
         except OSError:
             logger.warn("Could not connect to cellaserv: %s:%s", HOST, PORT)
             time.sleep(1)
-
-logger = make_logger(__name__)
-logger.debug("DEBUG: %s", DEBUG)
-logger.debug("HOST: %s", HOST)
-logger.debug("PORT: %s", PORT)
