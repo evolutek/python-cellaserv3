@@ -11,15 +11,12 @@ See example usage in `cellaserv/examples/`.
 
 Install `python-cellaserv3`:
 
-    $ git clone https://github.com/evolutek/python-cellaserv3.git
-    $ cd python-cellaserv3
-    $ git submodule init
-    $ git submodule update cellaserv/protobuf
+    $ git clone --recurse-submodules https://github.com/evolutek/python-cellaserv3.git
     $ python setup.py develop
 
 ## Testing
 
-1. Start the cellaserv3 server.
+1. Start the cellaserv3 server locally.
 2. Run:
 
     $ pytest
