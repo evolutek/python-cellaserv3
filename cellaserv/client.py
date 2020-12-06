@@ -232,7 +232,11 @@ class Client:
                 reply_future.set_exception(ReplyError(reply))
             return
 
-        reply_future.set_result(json.loads(reply.data))
+        try:
+            reply_result = None if reply.data == b"" else json.loads(reply.data)
+            reply_future.set_result(reply_result)
+        except ValueError:
+            reply_future.set_exception(ReplyError(reply))
 
     async def send_message(self, msg):
         """Send a cellaserv Message protobuf message."""
@@ -307,10 +311,10 @@ class Client:
 
         logger.info("[Request] %s/%s.%s(%s)", service, identification, method, data)
         request = Request(service_name=service, method=method)
-        if identification:
+        if identification is not None:
             request.service_identification = identification
         if data:
-            request.data = data
+            request.data = json.dumps(data).encode()
         request.id = self._request_seq_id
         self._request_seq_id += 1
 
@@ -318,6 +322,7 @@ class Client:
 
         # Create a future that will hold the reply in the result
         request_future = asyncio.Future()
+        print(request.id)
         self._requests_in_flight[request.id] = request, request_future
         await self.send_message(message)
         return await request_future

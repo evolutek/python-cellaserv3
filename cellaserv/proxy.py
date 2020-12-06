@@ -20,6 +20,7 @@ Example usage::
 
 import asyncio
 import logging
+import traceback
 
 from cellaserv.client import Client
 from cellaserv.settings import DEBUG
@@ -39,12 +40,18 @@ class ActionProxy:
         self._identification = identification
         self._client = client
 
-    def __call__(self, **kwargs):
+    def __call__(self, *args, **kwargs):
+        if args and kwargs:
+            logger.error("[Proxy] Cannot send a request with both args and kwargs")
+            str_stack = "".join(traceback.format_stack())
+            self._client.publish(event="log.error", data=str_stack.encode())
+            return None
+
         return self._client.request(
             self._action,
             service=self._service,
             identification=self._identification,
-            data=kwargs,
+            data=args or kwargs,
         )
 
 
@@ -63,7 +70,12 @@ class ServiceProxy:
         return action
 
     def __getitem__(self, identification):
-        self._identification = identification
+        if isinstance(identification, str):
+            self._identification = identification
+        elif isinstance(identification, int):
+            self._identification = str(identification)
+        else:
+            logger.error("[Proxy] Invalid identification type: %s", identification)
         return self
 
 

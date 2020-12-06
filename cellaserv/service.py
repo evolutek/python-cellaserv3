@@ -533,7 +533,9 @@ class Service(Client, metaclass=ServiceMeta):
             callback = self._actions[method]
         except KeyError:
             logger.error("No such method: %s.%s", self, method)
-            self.reply_error_to(req, cellaserv.client.Reply.Error.NoSuchMethod, method)
+            await self.reply_error_to(
+                req, cellaserv.client.Reply.Error.NoSuchMethod, method
+            )
             return
 
         try:
@@ -542,7 +544,7 @@ class Service(Client, metaclass=ServiceMeta):
             logger.error(
                 "Bad arguments formatting: %s", _request_to_string(req), exc_info=True
             )
-            self.reply_error_to(
+            await self.reply_error_to(
                 req, cellaserv.client.Reply.Error.BadArguments, req.data
             )
             return
@@ -584,7 +586,7 @@ class Service(Client, metaclass=ServiceMeta):
             if reply_data is not None:
                 reply_data = json.dumps(reply_data).encode()
         except Exception as e:
-            self.reply_error_to(req, cellaserv.client.Reply.Error.Custom, str(e))
+            await self.reply_error_to(req, cellaserv.client.Reply.Error.Custom, str(e))
             logger.error("Exception during %s", _request_to_string(req), exc_info=True)
             return
 
