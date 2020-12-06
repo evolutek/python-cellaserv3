@@ -32,7 +32,7 @@ jobs:
       - name: Test with pytest
         run: |
           go get github.com/evolutek/cellaserv3/cmd/cellaserv
-          nohup go run github.com/evolutek/cellaserv3/cmd/cellaserv &
+          nohup go run github.com/evolutek/cellaserv3/cmd/cellaserv --logs-dir=/tmp &
           CSPID=$!
           pytest
           kill $CSPID
