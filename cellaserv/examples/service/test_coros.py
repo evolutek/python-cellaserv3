@@ -1,42 +1,33 @@
-#!/usr/bin/env python3
-
+import pytest
 import asyncio
 import time
 
 from cellaserv.service import Service, ConfigVariable
 
 
-class Date(Service):
-
-    coef = ConfigVariable("test", "coef")
-
+class CoroService(Service):
     def __init__(self):
         super().__init__()
-        self._time = time.time()
 
-    @Service.action
-    async def time(self):
-        return self._time
+        self._coro1_started = asyncio.Future()
+        self._coro2_started = asyncio.Future()
 
     @Service.coro
     async def coro1(self):
-        print("Coro 1 started")
-        while True:
-            await asyncio.sleep(1)
-            self._time = time.time() * float(self.coef())
+        self._coro1_started.set_result(True)
+        await self._coro2_started
 
     @Service.coro
     async def coro2(self):
-        print("Coro 2 started")
-        while True:
-            await asyncio.sleep(1)
-            print(self.coef())
+        await self._coro1_started
+        self._coro2_started.set_result(True)
 
 
-def main():
-    date_service = Date()
-    date_service.run()
+@pytest.mark.asyncio
+async def test_coros():
+    service = CoroService()
+    await service.ready()
 
+    await asyncio.gather(*[service._coro1_started, service._coro2_started])
 
-if __name__ == "__main__":
-    main()
+    await service.kill()
