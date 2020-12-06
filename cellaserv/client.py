@@ -207,7 +207,7 @@ class Client:
         try:
             request, reply_future = self._requests_in_flight.pop(reply.id)
         except KeyError:
-            log.warning("Unknown request ID for reply: \n%s", reply)
+            logger.warning("Unknown request ID for reply: \n%s", reply)
             return
 
         if reply.error.type != Reply.Error.NoError:
