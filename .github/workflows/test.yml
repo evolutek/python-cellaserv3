@@ -33,4 +33,6 @@ jobs:
         run: |
           go get github.com/evolutek/cellaserv3/cmd/cellaserv
           nohup go run github.com/evolutek/cellaserv3/cmd/cellaserv &
+          CSPID=$$
           pytest
+          kill $CSPID
