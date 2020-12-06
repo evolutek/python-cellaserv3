@@ -58,28 +58,6 @@ All service instance can set their "status" using self.status = "the service
 status". Tools like the cellaserv dashboard can then query the service status
 using the "list_variables" query of the service.
 
-Starting more than one service
-------------------------------
-
-It is sometime preferable to start multiple services at the same time, for
-example the same service but with different identifications. In this case you
-will instantiate multiple services, then give control to the async loop with
-Service.loop().
-
-Example usage:
-
-    >>> import asyncio
-    >>> from cellaserv.service import Service
-    >>> class Bar(Service):
-    ...     def __init__(self, id):
-    ...         super().__init__(identification=str(id))
-    ...
-    ...     @Service.action
-    ...     async def bar(self):
-    ...         print(self.identification)
-    ...
-    >>> Service.loop([Bar(i) for i in range(10)])
-
 Dependencies
 ------------
 
@@ -123,15 +101,14 @@ import cellaserv.settings
 from cellaserv.client import Client
 
 logger = logging.getLogger(__name__)
-logger.setLevel(
-    logging.DEBUG if cellaserv.settings.DEBUG >= 1 else logging.INFO)
+logger.setLevel(logging.DEBUG if cellaserv.settings.DEBUG >= 1 else logging.INFO)
 
 
 def _request_to_string(req):
     """Dump request to a short string representation."""
     strfmt = (
-        "{r.service_name}[{r.service_identification}].{r.method}({data}) "
-        "#id={r.id}")
+        "{r.service_name}[{r.service_identification}].{r.method}({data}) " "#id={r.id}"
+    )
     return strfmt.format(r=req, data=req.data if req.data != b"" else "")
 
 
@@ -156,6 +133,7 @@ class Event:
         ...             await asyncio.sleep(1)
 
     """
+
     def __init__(self, set=None, clear=None):
         """
         Define a new cellaserv Event.
@@ -215,16 +193,17 @@ class Variable:
 
     TODO: make ConfigVariable a child class of Variable
     """
+
     def __init__(self, default="", name=None):
         self._value = default
         self._name = name
 
     def __set_name__(self, owner, name):
         try:
-            service_variables = getattr(owner, '_variables')
+            service_variables = getattr(owner, "_variables")
         except AttributeError:
             service_variables = {}
-            setattr(owner, '_variables', service_variables)
+            setattr(owner, "_variables", service_variables)
         service_variables[name] = self
         self._name = name
 
@@ -270,6 +249,7 @@ class ConfigVariable:
         ...     def on_color_update(self, value):
         ...         self.color_coef = 1 if value == "red" else -1
     """
+
     def __init__(self, section, option, coerc=str):
         """
         Define a new config variable using the 'config service'.
@@ -302,8 +282,7 @@ class ConfigVariable:
 
         NB. It is not called when the value is first set.
         """
-        logger.debug("Variable %s.%s updated: %s", self.section, self.option,
-                     value)
+        logger.debug("Variable %s.%s updated: %s", self.section, self.option, value)
         self.value = self.coerc(value)
         for cb in self.update_cb:
             cb(self.value)
@@ -331,6 +310,7 @@ class ServiceMeta(type):
 
         Basic level of metaprogramming magic.
         """
+
         def _event_wrap_set(event):
             async def _event_set(self, **kwargs):
                 logger.debug("Event %s set, data=%s", event.name, kwargs)
@@ -373,7 +353,8 @@ class ServiceMeta(type):
 
             elif isinstance(member, ConfigVariable):
                 event_name = "config.{section}.{option}".format(
-                    section=member.section, option=member.option)
+                    section=member.section, option=member.option
+                )
                 events[event_name] = _config_var_wrap_event(member)
                 config_variables.append(member)
                 # Ensure config is a dependency for this service
@@ -415,9 +396,10 @@ class Service(Client, metaclass=ServiceMeta):
 
         self.identification = identification or self.identification or ""
 
-        loop = asyncio.get_event_loop()
-        loop.create_task(self._setup())
-        self._loop = loop
+        # The client has finished the setup phase.
+        self._ready = asyncio.Future()
+
+        asyncio.create_task(self._setup())
 
     # Protocol helpers
 
@@ -471,6 +453,7 @@ class Service(Client, metaclass=ServiceMeta):
 
         :param name str: Change the name of that method to ``name``.
         """
+
         def _set_action(method, action):
             try:
                 method._actions.append(action)
@@ -494,6 +477,7 @@ class Service(Client, metaclass=ServiceMeta):
         matching its name (or argument passed to ``Service.event``) is
         received.
         """
+
         def _set_event(method, event):
             try:
                 method._events.append(event)
@@ -531,20 +515,9 @@ class Service(Client, metaclass=ServiceMeta):
         method._coro = True
         return method
 
-    @classmethod
-    def loop(kls, services):
-        """Wait for multiple services."""
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(kls._loop(services))
-        loop.close()
-
-    @classmethod
-    async def _loop(kls, services):
-        await asyncio.wait([service.done() for service in services])
-
     # Instantiated class land
-    async def done(self):
-        await self._disconnect
+    def done(self):
+        return self._disconnected
 
     async def on_request(self, req):
         """
@@ -560,23 +533,28 @@ class Service(Client, metaclass=ServiceMeta):
             callback = self._actions[method]
         except KeyError:
             logger.error("No such method: %s.%s", self, method)
-            self.reply_error_to(req, cellaserv.client.Reply.Error.NoSuchMethod,
-                                method)
+            self.reply_error_to(req, cellaserv.client.Reply.Error.NoSuchMethod, method)
             return
 
         try:
             data = self._decode_msg_data(req)
         except Exception as e:
-            logger.error("Bad arguments formatting: %s",
-                         _request_to_string(req),
-                         exc_info=True)
-            self.reply_error_to(req, cellaserv.client.Reply.Error.BadArguments,
-                                req.data)
+            logger.error(
+                "Bad arguments formatting: %s", _request_to_string(req), exc_info=True
+            )
+            self.reply_error_to(
+                req, cellaserv.client.Reply.Error.BadArguments, req.data
+            )
             return
 
         try:
-            logger.debug("Calling %s/%s.%s(%s)...", self.service_name,
-                         self.identification, method, data)
+            logger.debug(
+                "Calling %s/%s.%s(%s)...",
+                self.service_name,
+                self.identification,
+                method,
+                data,
+            )
 
             # Guess type of arguments passing
             if type(data) is list:
@@ -593,21 +571,24 @@ class Service(Client, metaclass=ServiceMeta):
             # callback should be bound to this instance.
             bound_cb = callback.__get__(self, type(self))
             reply_data = await bound_cb(*args, **kwargs)
-            logger.debug("Called %s/%s.%s(%s) = %s", self.service_name,
-                         self.identification, method, data, reply_data)
+            logger.debug(
+                "Called %s/%s.%s(%s) = %s",
+                self.service_name,
+                self.identification,
+                method,
+                data,
+                reply_data,
+            )
             # Method may, or may not return something. If it returns some data,
             # it must be encoded in json.
             if reply_data is not None:
                 reply_data = json.dumps(reply_data).encode()
         except Exception as e:
-            self.reply_error_to(req, cellaserv.client.Reply.Error.Custom,
-                                str(e))
-            logger.error("Exception during %s",
-                         _request_to_string(req),
-                         exc_info=True)
+            self.reply_error_to(req, cellaserv.client.Reply.Error.Custom, str(e))
+            logger.error("Exception during %s", _request_to_string(req), exc_info=True)
             return
 
-        self.reply_to(req, reply_data)
+        await self.reply_to(req, reply_data)
 
     # Default actions
     async def help(self) -> dict:
@@ -621,7 +602,7 @@ class Service(Client, metaclass=ServiceMeta):
         docs["doc"] = inspect.getdoc(self)
         docs["actions"] = await self.help_actions()
         docs["events"] = await self.help_events()
-        docs["variables"] = await self.help_variables()
+        docs["variables"] = await self.list_variables()
         return docs
 
     help._actions = ["help"]
@@ -640,8 +621,7 @@ class Service(Client, metaclass=ServiceMeta):
 
             # Get signature of this method, ie. how the user must call it
             if sys.version_info.minor < 3:
-                sig = (name +
-                       inspect.formatargspec(*inspect.getfullargspec(bound_f)))
+                sig = name + inspect.formatargspec(*inspect.getfullargspec(bound_f))
             else:
                 sig = name + str(inspect.signature(bound_f))
 
@@ -671,9 +651,9 @@ class Service(Client, metaclass=ServiceMeta):
 
     # Note: we cannot use @staticmethod here because the descriptor it creates
     # is shadowing the attribute we add to the method.
-    async def kill(self) -> "Does not return.":
+    async def kill(self):
         """Kill the service."""
-        self._disconnect.set_result(True)
+        await self.disconnect()
 
     kill._actions = ["kill"]
 
@@ -713,7 +693,7 @@ class Service(Client, metaclass=ServiceMeta):
             log_data["msg"] = out.read().decode()
 
         # Publish log message to cellaserv
-        self.publish(event=log_name, **log_data)
+        asyncio.create_task(self.publish(event=log_name, **log_data))
 
     # Main setup of the service
 
@@ -724,7 +704,7 @@ class Service(Client, metaclass=ServiceMeta):
         """
         # Start accepting messages
         asyncio.create_task(self.handle_messages())
-        await self._connected
+        await self.connected()
 
         await self._wait_for_dependencies()
         await self._setup_variables()
@@ -737,6 +717,10 @@ class Service(Client, metaclass=ServiceMeta):
 
         self.status = "Ready"
         logger.info("Service running!")
+        self._ready.set_result(True)
+
+    async def ready(self):
+        await self._ready
 
     async def _setup_config_vars(self):
         """
@@ -756,8 +740,9 @@ class Service(Client, metaclass=ServiceMeta):
             data = await self.request("get", "config", data=req_data_bytes)
             # Data is json encoded
             args = self._decode_data(data)
-            logger.info("[ConfigVariable] %s.%s is %s", variable.section,
-                        variable.option, args)
+            logger.info(
+                "[ConfigVariable] %s.%s is %s", variable.section, variable.option, args
+            )
             # we don't use update() because the context of the service is
             # not yet initialized, and it is not an update of a previous
             # value (because there isn't)
@@ -772,36 +757,32 @@ class Service(Client, metaclass=ServiceMeta):
             # No dependencies, return early
             return
 
+        super_done = self.done()
+
         # Create a special client for dependency setup only
         class DependencyWaitingClient(Client):
             def __init__(self, dependencies):
                 super().__init__()
 
                 self._services_missing = dependencies
-                self._services_missing_lck = asyncio.Lock()
                 self._all_services_present = asyncio.Future()
 
             async def wait_for_dependencies(self):
-                # Ensure the client loop is started
-                asyncio.create_task(self.handle_messages())
-
                 # First register for new services, so that we don't miss a service
                 # if it registers just after the 'list_services' call.
-                self.subscribe("log.cellaserv.new-service",
-                               self._check_service)
+                await self.subscribe("log.cellaserv.new-service", self._check_service)
 
-                asyncio.create_task(self.heartbeat())
-                await self._backlog()
-                await self._all_services_present
+                await self._process_backlog()
+                await self._active_wait()
 
-            async def _backlog(self):
+            async def _process_backlog(self):
                 # Get the list of already registered service.
-                data = await self.request("list_services", "cellaserv")
-                services_registered = json.loads(data)
+                services_registered = await self.request("list_services", "cellaserv")
 
                 for service in services_registered:
-                    await self._check_service(service["name"],
-                                              service["identification"])
+                    await self._check_service(
+                        service["name"], service["identification"]
+                    )
 
             async def _check_service(self, name, identification, client=None):
                 key = (name, identification)
@@ -814,19 +795,32 @@ class Service(Client, metaclass=ServiceMeta):
                 if len(self._services_missing) == 0:
                     self._all_services_present.set_result(None)
 
-            async def heartbeat(self):
-                while not self._all_services_present.done():
+            async def _active_wait(self):
+                while True:
                     logger.info("Waiting for %s", self._services_missing)
-                    await asyncio.sleep(1)
+                    try:
+                        await asyncio.wait_for(
+                            asyncio.wait(
+                                {self._all_services_present, super_done},
+                                return_when=asyncio.FIRST_COMPLETED,
+                            ),
+                            timeout=1,
+                        )
+                    except asyncio.TimeoutError:
+                        continue
+                    if super_done.done() or self._all_services_present.done():
+                        break
 
         client = DependencyWaitingClient(self._service_dependencies)
-        await client.connect()
+        await client.connected()
         await client.wait_for_dependencies()
+        await client.disconnect()
 
     async def _setup_variables(self):
         """
         Setup variables.
         """
+
         def _var_wrap_set(variable):
             async def _var_set(self, value):
                 variable._update(value)
@@ -849,7 +843,7 @@ class Service(Client, metaclass=ServiceMeta):
         for event_name, callback in self._events.items():
             # Bind method to object
             callback_bound = callback.__get__(self, type(self))
-            self.subscribe(event_name, callback_bound)
+            await self.subscribe(event_name, callback_bound)
 
     async def _start_coros(self):
         """Schedules services coroutines."""
@@ -857,10 +851,3 @@ class Service(Client, metaclass=ServiceMeta):
             # Bind method to the current instance
             bound_method = method.__get__(self, type(self))
             asyncio.create_task(bound_method())
-
-    def run(self):
-        """
-        Sugar for starting the service with asyncio.
-        """
-        self._loop.run_forever()
-        self._loop.close()

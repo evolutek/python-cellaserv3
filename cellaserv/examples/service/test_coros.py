@@ -8,7 +8,7 @@ from cellaserv.service import Service, ConfigVariable
 
 class Date(Service):
 
-    coef = ConfigVariable('test', 'coef')
+    coef = ConfigVariable("test", "coef")
 
     def __init__(self):
         super().__init__()

@@ -7,7 +7,7 @@ import os
 logging.basicConfig()
 
 config = configparser.ConfigParser()
-config.read(['/etc/conf.d/cellaserv'])
+config.read(["/etc/conf.d/cellaserv"])
 
 
 def make_setting(name, default, cfg_section, cfg_option, env, coerc=str):
@@ -27,18 +27,21 @@ def make_logger(name):
     return logger
 
 
-make_setting('HOST', 'localhost', 'client', 'host', 'CS_HOST')
-make_setting('PORT', 4200, 'client', 'port', 'CS_PORT', int)
-make_setting('DEBUG', 0, 'client', 'debug', 'CS_DEBUG', int)
+make_setting("HOST", "localhost", "client", "host", "CS_HOST")
+HOST = globals()["HOST"]
+make_setting("PORT", 4200, "client", "port", "CS_PORT", int)
+PORT = globals()["PORT"]
+make_setting("DEBUG", 0, "client", "debug", "CS_DEBUG", int)
+DEBUG = globals()["DEBUG"]
 
 
-async def get_connection(loop):
+async def get_connection():
     """Open a socket to cellaserv using user configuration."""
     while True:
         try:
-            return await asyncio.open_connection(HOST, PORT, loop=loop)
+            return await asyncio.open_connection(HOST, PORT)
         except OSError:
-            logger.warn("Could not connect to cellaserv: %s:%s", HOST, PORT)
+            logger.warning("Could not connect to cellaserv: %s:%s", HOST, PORT)
             await asyncio.sleep(1)
 
 

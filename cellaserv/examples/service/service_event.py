@@ -33,7 +33,7 @@ from cellaserv.service import Service, Event
 class Foo(Service):
 
     some_event = Event()  # set event is 'some_event'
-    event = Event(set='my_set', clear='my_clear')
+    event = Event(set="my_set", clear="my_clear")
 
     # Threads
 
@@ -63,5 +63,5 @@ def main():
     foo.run()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

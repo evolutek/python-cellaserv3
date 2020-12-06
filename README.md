@@ -1,20 +1,17 @@
 # python-cellaserv3
 
-Python3 client library for cellaserv3.
+Python3 client library for
+[cellaserv3](https://github.com/evolutek/cellaserv3).
 
 ## Features
 
-* Client
-* Service
-* Services stub
-
-See example usage in `examples/`.
+See example usage in `cellaserv/examples/`.
 
 ## Install
 
-Installing `python-cellaserv3`:
+Install `python-cellaserv3`:
 
-    $ git clone ssh://git@bitbucket.org/evolutek/python-cellaserv3.git
+    $ git clone https://github.com/evolutek/python-cellaserv3.git
     $ cd python-cellaserv3
     $ git submodule init
     $ git submodule update cellaserv/protobuf
@@ -22,13 +19,14 @@ Installing `python-cellaserv3`:
 
 ## Testing
 
-Run:
+1. Start the cellaserv3 server.
+2. Run:
 
     $ pytest
 
 ## Authors
 
-- Rémi Audebert, Evolutek 2012-2018
+- Rémi Audebert, Evolutek 2012-2020
 - Benoît Reitz, Evolutek 2013-2015
 - Adrien Schildknecht, Evolutek 2013-2015
 - Vincent Gatine, Evolutek 2014-2015

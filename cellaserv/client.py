@@ -17,20 +17,28 @@ from collections import defaultdict
 
 from google.protobuf.text_format import MessageToString
 
-from cellaserv.protobuf.cellaserv_pb2 import (Message, Register, Request,
-                                              Reply, Publish, Subscribe)
+from cellaserv.protobuf.cellaserv_pb2 import (
+    Message,
+    Register,
+    Request,
+    Reply,
+    Publish,
+    Subscribe,
+)
 
 from cellaserv.settings import DEBUG, get_connection
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG if DEBUG >= 2 else logging.INFO if DEBUG ==
-                1 else logging.WARNING)
+logger.setLevel(
+    logging.DEBUG if DEBUG >= 2 else logging.INFO if DEBUG == 1 else logging.WARNING
+)
 
 # Exceptions
 
 
 class ReplyError(Exception):
     """Indicate that the reply contains an error."""
+
     def __init__(self, rep):
         self.rep = rep
 
@@ -40,16 +48,19 @@ class ReplyError(Exception):
 
 class RequestTimeout(ReplyError):
     """Indicate that the request has timed out."""
+
     pass
 
 
 class BadArguments(ReplyError):
     """Indicate that the request arguments were invalid."""
+
     pass
 
 
 class NoSuchService(Exception):
     """Indicate that the requested service was not found in the client."""
+
     def __init__(self, service):
         self.service = service
 
@@ -60,17 +71,20 @@ class NoSuchService(Exception):
 class NoSuchIdentification(Exception):
     """Indicate that the requested service identification was not found in the
     client."""
+
     def __init__(self, service, identification):
         self.service = service
         self.identification = identification
 
     def __str__(self):
         return "No such service identification: {0}.{1}".format(
-            self.service, self.identification)
+            self.service, self.identification
+        )
 
 
 class NoSuchMethod(Exception):
     """Indicate that the service does not have the requested method."""
+
     def __init__(self, service, method):
         self.service = service
         self.method = method
@@ -81,44 +95,62 @@ class NoSuchMethod(Exception):
 
 class Client:
     """Low level cellaserv client. Sends and receives protobuf messages."""
-    def __init__(self):
+
+    def __init__(self, conn=None):
         # Nonce used to identify requests
-        self._request_seq_id = random.randrange(0, 2**32)
+        # TODO: use atomic int
+        self._request_seq_id = random.randrange(0, 2 ** 32)
 
         # These variables are initialized in connect()
-        self._loop = None
         # Pipes to the cellaserv message broker
         self._conn_read = None
         self._conn_write = None
-        # The client is connected
+
+        # The client is connected to cellaserv.
         self._connected = asyncio.Future()
-        # Requests made by this client waiting for a response
+        # Requests made by this client waiting for a response.
         self._requests_in_flight = {}
-        # Topic subscribed to by this client
+        # Topic subscribed to by this client.
         self._subscribes = defaultdict(list)
         # Set this future to disconnect the client.
         self._disconnect = asyncio.Future()
+        # Signals that the client is fully disconnected.
+        self._disconnected = asyncio.Future()
 
-    async def connect(self, conn=None, loop=None):
+        # Connect to cellaserv
+        self._connect_task = asyncio.create_task(self.connect(conn))
+        self._handle_messages_task = asyncio.create_task(self.handle_messages())
+
+    async def connect(self, conn=None):
         """Establish a connection to cellaserv.
 
         Host and port are determined by the cellaserv.settings module, or by
         the ``conn`` parameter, if provided.
         """
-        self._loop = loop or asyncio.get_running_loop()
-        self._conn_read, self._conn_write = conn or await get_connection(
-            self._loop)
+        self._conn_read, self._conn_write = conn or await get_connection()
         self._connected.set_result(True)
-        self._loop.create_task(self.disconnect())
+
+    async def connected(self):
+        await self._connected
 
     async def disconnect(self):
-        await self._disconnect
-        self._conn_write.close()
+        self._disconnect.set_result(True)
+
+        if self._conn_write is not None:
+            self._conn_write.close()
+            await self._conn_write.wait_closed()
+        if self._connect_task:
+            self._connect_task.cancel()
+        if self._handle_messages_task:
+            self._handle_messages_task.cancel()
+
+        self._disconnected.set_result(True)
+
+    def disconnected(self):
+        return self._disconnected
 
     async def handle_messages(self):
-        # Ensure that we have a connection
-        if not self._connected.done():
-            await self.connect()
+        await self._connected
 
         # Read all messages
         async for msg in self._read_messages():
@@ -127,13 +159,19 @@ class Client:
     async def _read_messages(self):
         """Read one message. Wire format is 4-byte size, then data."""
         while True:
-            header = await self._conn_read.read(4)
+            read_header_task = asyncio.create_task(self._conn_read.read(4))
+            await asyncio.wait(
+                {read_header_task, self._disconnect},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if self._disconnect.done():
+                # Client was disconnected
+                read_header_task.cancel()
+                return
+            header = read_header_task.result()
             if len(header) == 0:
-                if self._disconnect.done():
-                    # Client was disconnected
-                    return
-                else:
-                    continue
+                # Connection closed
+                return
             msg_len = struct.unpack("!I", header)[0]
             msg_bytes = await self._conn_read.read(msg_len)
             msg = Message()
@@ -159,7 +197,7 @@ class Client:
         # Parse protobuf message
         payload.ParseFromString(msg.content)
         # Schedule handling of message
-        self._loop.create_task(coro(payload))
+        asyncio.create_task(coro(payload))
 
     async def on_request(self, req):
         # To be implemented by the service
@@ -180,27 +218,31 @@ class Client:
                 reply_future.set_exception(NoSuchService(request.service_name))
             elif reply.error.type == Reply.Error.InvalidIdentification:
                 reply_future.set_exception(
-                    NoSuchIdentification(request.service_name,
-                                         request.service_identification))
+                    NoSuchIdentification(
+                        request.service_name, request.service_identification
+                    )
+                )
             elif reply.error.type == Reply.Error.NoSuchMethod:
                 reply_future.set_exception(
-                    NoSuchMethod(request.service, request.method))
+                    NoSuchMethod(request.service, request.method)
+                )
             elif reply.error.type == Reply.Error.BadArguments:
                 reply_future.set_exception(BadArguments(reply))
             else:
                 reply_future.set_exception(ReplyError(reply))
             return
 
-        reply_future.set_result(reply.data)
+        reply_future.set_result(json.loads(reply.data))
 
-    def send_message(self, msg):
+    async def send_message(self, msg):
         """Send a cellaserv Message protobuf message."""
         logger.debug("Sending:\n%s", msg)
         msg_data = msg.SerializeToString()
         msg_size_data = struct.pack("!I", len(msg_data))
+        await self._connected
         self._conn_write.write(msg_size_data + msg_data)
 
-    def reply_to(self, req, data=None):
+    async def reply_to(self, req, data=None):
         """
         Send a reply to the request req, with optional data in the reply.
 
@@ -214,9 +256,9 @@ class Client:
         msg = Message()
         msg.type = Message.Reply
         msg.content = reply.SerializeToString()
-        self.send_message(msg)
+        await self.send_message(msg)
 
-    def reply_error_to(self, req, error_type, what=None):
+    async def reply_error_to(self, req, error_type, what=None):
         """
         Send an error reply to the request ``req``.
 
@@ -234,7 +276,7 @@ class Client:
         msg = Message()
         msg.type = Message.Reply
         msg.content = reply.SerializeToString()
-        self.send_message(msg)
+        await self.send_message(msg)
 
     async def register(self, name, identification=None):
         """
@@ -248,17 +290,11 @@ class Client:
         if identification:
             register.identification = identification
 
-        message = Message(type=Message.Register,
-                          content=register.SerializeToString())
+        message = Message(type=Message.Register, content=register.SerializeToString())
 
-        self.send_message(message)
+        await self.send_message(message)
 
-    async def request(self,
-                      method,
-                      service,
-                      *,
-                      identification=None,
-                      data=None):
+    async def request(self, method, service, *, identification=None, data=None):
         """
         Send a ``request`` message.
 
@@ -269,8 +305,7 @@ class Client:
         :rtype: int
         """
 
-        logger.info("[Request] %s/%s.%s(%s)", service, identification, method,
-                    data)
+        logger.info("[Request] %s/%s.%s(%s)", service, identification, method, data)
         request = Request(service_name=service, method=method)
         if identification:
             request.service_identification = identification
@@ -279,20 +314,19 @@ class Client:
         request.id = self._request_seq_id
         self._request_seq_id += 1
 
-        message = Message(type=Message.Request,
-                          content=request.SerializeToString())
+        message = Message(type=Message.Request, content=request.SerializeToString())
 
         # Create a future that will hold the reply in the result
-        self._requests_in_flight[
-            request.id] = request, self._loop.create_future()
-        self.send_message(message)
-        return await self._requests_in_flight[request.id][1]
+        request_future = asyncio.Future()
+        self._requests_in_flight[request.id] = request, request_future
+        await self.send_message(message)
+        return await request_future
 
-    def log_exc(self):
+    async def log_exc(self):
         """Log the current exception."""
 
         str_stack = "".join(traceback.format_exc())
-        self.publish(event="log.error", data=str_stack.encode())
+        await self.publish(event="log.error", data=str_stack.encode())
 
     def publish(self, event, **kwargs):
         """
@@ -312,10 +346,9 @@ class Client:
             data = repr(kwargs)
         publish.data = json.dumps(kwargs).encode()
 
-        message = Message(type=Message.Publish,
-                          content=publish.SerializeToString())
+        message = Message(type=Message.Publish, content=publish.SerializeToString())
 
-        self.send_message(message)
+        asyncio.create_task(self.send_message(message))
 
     async def on_publish(self, pub):
         logging.info("[Subscribe] Received %s", pub.event)
@@ -326,7 +359,7 @@ class Client:
             logging.debug("[Subscribe] Calling %r(%r)", cb, payload)
             asyncio.create_task(cb(**payload))
 
-    def subscribe(self, event, cb=None):
+    async def subscribe(self, event, cb=None):
         """
         Send a ``subscribe`` message.
 
@@ -337,8 +370,7 @@ class Client:
         logger.info("[Subscribe] %s", event)
 
         subscribe = Subscribe(event=event)
-        message = Message(type=Message.Subscribe,
-                          content=subscribe.SerializeToString())
+        message = Message(type=Message.Subscribe, content=subscribe.SerializeToString())
         if cb is not None:
             self._subscribes[event].append(cb)
-        self.send_message(message)
+        await self.send_message(message)

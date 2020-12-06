@@ -9,7 +9,7 @@ from cellaserv.service import Service
 class Date(Service):
     @Service.action
     async def time(self):
-        return {'time': int(time.time())}
+        return int(time.time())
 
     @Service.action("print_time")
     async def print(self):
@@ -21,15 +21,15 @@ class Date(Service):
 
     @Service.coro
     async def timer(self):
-        while True:
+        while not self._disconnect:
             self.log(time=time.time())
             await asyncio.sleep(3)
 
 
-def main():
+async def main():
     date_service = Date()
-    date_service.run()
+    await date_service.done()
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

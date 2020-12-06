@@ -1,1 +1,3 @@
 protobuf
+pytest
+pytest-asyncio
