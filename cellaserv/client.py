@@ -359,10 +359,19 @@ class Client:
         logging.info("[Subscribe] Received %s", pub.event)
 
         # Decode published data
-        payload = json.loads(pub.data.decode())
+        if pub.data == b"":
+            make_task = lambda cb: cb()
+        else:
+            payload = json.loads(pub.data.decode())
+            if isinstance(payload, list):
+                make_task = lambda cb: cb(*payload)
+            elif isinstance(payload, dict):
+                make_task = lambda cb: cb(**payload)
+            else:
+                logger.warning("Invalid publish data: %s, %s", pub.event, pub.data)
         for cb in self._subscribes[pub.event]:
             logging.debug("[Subscribe] Calling %r(%r)", cb, payload)
-            asyncio.create_task(cb(**payload))
+            asyncio.create_task(make_task(cb))
 
     async def subscribe(self, event, cb=None):
         """

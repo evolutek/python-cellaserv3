@@ -118,20 +118,6 @@ class Event:
 
     External clients can send data to the event in this service using a publish
     message to the event's name.
-
-    Example::
-
-        >>> from cellaserv.service import Service, Event
-        >>> class Timer(Service):
-        ...     event = Event()  # Sending a publish to "event" will set the event
-        ...     ...
-        ...     @Service.coro
-        ...     async def coro_loop_wait(self):
-        ...         while True:
-        ...             await self.event.wait()
-        ...             print("Waited! Event's data: ", self.event())
-        ...             await asyncio.sleep(1)
-
     """
 
     def __init__(self, set=None, clear=None):
@@ -142,27 +128,31 @@ class Event:
         :param clear str: Event that clears the variable
         """
 
-        self.name = "?"  # set by Service to the name of the declared field
-        # Optional data held by the event
-        self.data = {}
+        self.name = None
 
         # Events that set/clear the event, if they are different from the name
         self._event_set = set
         self._event_clear = clear
 
-        # Internal future object
+        # Not set here because the event loop may not be ready yet
+        self._future = None
+
+    def async_init(self):
+        """Initializes the event with the current event loop."""
         self._future = asyncio.Future()
 
-    def wait(self):
-        return self._future
+    async def wait(self):
+        await self._future
 
     def is_set(self):
         return self._future.done()
 
-    def set(self):
-        self._future.set_result(self.data)
+    async def set(self, *args, **kwargs):
+        logger.debug("Event %s set, args=%s kwargs=", self.name, args, kwargs)
+        self._future.set_result(args or kwargs)
 
-    def clear(self):
+    async def clear(self):
+        logger.debug("Event %s cleared", self.name)
         old_future = self._future
         self._future = asyncio.Future()
         old_future.cancel()
@@ -311,27 +301,13 @@ class ServiceMeta(type):
         Basic level of metaprogramming magic.
         """
 
-        def _event_wrap_set(event):
-            async def _event_set(self, **kwargs):
-                logger.debug("Event %s set, data=%s", event.name, kwargs)
-                event.data = kwargs
-                event.set()
-
-            return _event_set
-
-        def _event_wrap_clear(event):
-            async def _event_clear(self, **kwargs):
-                logger.debug("Event %s cleared, data=%s", event.name, kwargs)
-                event.data = kwargs
-                event.clear()
-
-            return _event_clear
-
         def _config_var_wrap_event(variable):
             async def _variable_update(self, value):
                 variable.update(value=value)
 
             return _variable_update
+
+        cls._event_objects = []
 
         actions = {}
         config_variables = []
@@ -362,10 +338,7 @@ class ServiceMeta(type):
 
             elif isinstance(member, Event):
                 member.name = name
-                event_set = member._event_set or name
-                event_clear = member._event_clear or name + "_clear"
-                events[event_set] = _event_wrap_set(member)
-                events[event_clear] = _event_wrap_clear(member)
+                cls._event_objects.append(member)
 
         cls._actions = actions
         cls._config_variables = config_variables
@@ -516,6 +489,7 @@ class Service(Client, metaclass=ServiceMeta):
         return method
 
     # Instantiated class land
+
     def done(self):
         return self._disconnected
 
@@ -695,17 +669,12 @@ class Service(Client, metaclass=ServiceMeta):
             log_data["msg"] = out.read().decode()
 
         # Publish log message to cellaserv
-        asyncio.create_task(self.publish(event=log_name, **log_data))
+        self.publish(event=log_name, **log_data)
 
     # Main setup of the service
 
     async def _setup(self):
-        """
-        _setup() will use the socket connected to cellaserv to initialize the
-        service.
-        """
-        # Start accepting messages
-        asyncio.create_task(self.handle_messages())
+        """Initializes the service."""
         await self.connected()
 
         await self._wait_for_dependencies()
@@ -842,6 +811,12 @@ class Service(Client, metaclass=ServiceMeta):
         """
         Subscribe to events.
         """
+        for event in self._event_objects:
+            event.async_init()
+            event_set = event._event_set or event.name
+            event_clear = event._event_clear or event.name + "_clear"
+            await self.subscribe(event_set, event.set)
+            await self.subscribe(event_clear, event.clear)
         for event_name, callback in self._events.items():
             # Bind method to object
             callback_bound = callback.__get__(self, type(self))

@@ -1,11 +1,6 @@
 #!/usr/bin/env python
 """Asynchronous event setting.
 
-.. warning::
-
-    You must setup a custom thread in order to let network thread read incoming
-    events.
-
 Set::
 
     $ cellaservctl publish some_event
@@ -35,8 +30,6 @@ class Foo(Service):
     some_event = Event()  # set event is 'some_event'
     event = Event(set="my_set", clear="my_clear")
 
-    # Threads
-
     @Service.coro
     async def coro_loop(self):
         while True:
@@ -46,7 +39,7 @@ class Foo(Service):
             if self.event.is_set():
                 print("Set! self.event.data = {}".format(self.event.data))
             else:
-                print("Unset. self.event.data = {}".format(self.event.data))
+                print("Unset.")
 
             await asyncio.sleep(1)
 
@@ -58,10 +51,10 @@ class Foo(Service):
             await asyncio.sleep(1)
 
 
-def main():
+async def main():
     foo = Foo()
-    foo.run()
+    await foo.done()
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
