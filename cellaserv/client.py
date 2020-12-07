@@ -322,7 +322,6 @@ class Client:
 
         # Create a future that will hold the reply in the result
         request_future = asyncio.Future()
-        print(request.id)
         self._requests_in_flight[request.id] = request, request_future
         await self.send_message(message)
         return await request_future

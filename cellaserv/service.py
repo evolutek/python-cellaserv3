@@ -134,28 +134,41 @@ class Event:
         self._event_set = set
         self._event_clear = clear
 
-        # Not set here because the event loop may not be ready yet
-        self._future = None
+        # Not initialized here because the event loop may not be ready yet
+        self._set_future = None
+        self._clear_future = None
 
     def async_init(self):
         """Initializes the event with the current event loop."""
-        self._future = asyncio.Future()
+        self._set_future = asyncio.Future()
+        self._clear_future = asyncio.Future()
 
-    async def wait(self):
-        await self._future
+    def wait(self):
+        return self._set_future
+
+    def wait_reset(self):
+        return self._clear_future
 
     def is_set(self):
-        return self._future.done()
+        return self._set_future.done()
 
     async def set(self, *args, **kwargs):
         logger.debug("Event %s set, args=%s kwargs=", self.name, args, kwargs)
-        self._future.set_result(args or kwargs)
+        self._set_future.set_result(args or kwargs)
+        old_clear_future = self._clear_future
+        self._clear_future = asyncio.Future()
+        old_clear_future.cancel()
 
     async def clear(self):
+        print(self.name, "clear")
         logger.debug("Event %s cleared", self.name)
-        old_future = self._future
-        self._future = asyncio.Future()
-        old_future.cancel()
+        old_set_future = self._set_future
+        self._set_future = asyncio.Future()
+        old_set_future.cancel()
+        self._clear_future.set_result(True)
+
+    def data(self):
+        return self._set_future.result()
 
     def __call__(self):
         """
@@ -163,7 +176,7 @@ class Event:
 
         Handy syntactic sugar.
         """
-        return self.data
+        return self.data()
 
 
 class Variable:
