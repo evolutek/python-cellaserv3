@@ -684,7 +684,7 @@ class Service(Client, metaclass=ServiceMeta):
             out = io.StringIO()
             print(*args, end="", file=out)
             out.seek(0)
-            log_data["msg"] = out.read().decode()
+            log_data["msg"] = out.read()
 
         # Publish log message to cellaserv
         self.publish(event=log_name, **log_data)
