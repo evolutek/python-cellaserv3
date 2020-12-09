@@ -12,7 +12,11 @@ class Date(Service):
         return int(time.time())
 
     @Service.action("print_time")
-    async def print(self):
+    def print(self):
+        print(time.time())
+
+    @Service.action
+    async def print_async(self):
         print(time.time())
 
     @Service.event("hello")

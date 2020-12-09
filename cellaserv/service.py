@@ -353,6 +353,7 @@ class ServiceMeta(type):
                 member.name = name
                 cls._event_objects.append(member)
 
+        # TODO: move that before and avoid the local variables
         cls._actions = actions
         cls._config_variables = config_variables
         cls._events = events
@@ -559,7 +560,11 @@ class Service(Client, metaclass=ServiceMeta):
             # We use the descriptor's __get__ because we don't know if the
             # callback should be bound to this instance.
             bound_cb = callback.__get__(self, type(self))
-            reply_data = await bound_cb(*args, **kwargs)
+            if inspect.iscoroutinefunction(callback):
+                reply_data = await bound_cb(*args, **kwargs)
+            else:
+                reply_data = bound_cb(*args, **kwargs)
+
             logger.debug(
                 "Called %s/%s.%s(%s) = %s",
                 self.service_name,
