@@ -33,3 +33,9 @@ async def test_bad_publish(proxy):
     # Rational for raise: bytes are not JSON serializable
     with pytest.raises(TypeError):
         proxy("test", baz=b"aa")
+
+
+@pytest.mark.asyncio
+async def test_logging(proxy):
+    proxy("foo")
+    proxy("event", foo="bar")
