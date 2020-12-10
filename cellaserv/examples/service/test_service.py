@@ -79,3 +79,29 @@ async def test_multiple_services(proxy):
 
     # Teardown
     await asyncio.gather(*[service.kill() for service in services])
+
+
+class LogService(Service):
+    def send_logs(self):
+        self.log("1")
+        self.log({"test": 42})
+        self.log(foo="bar")
+
+    @Service.action
+    def do_log(self):
+        self.send_logs()
+
+    @Service.action
+    async def async_do_log(self):
+        self.send_logs()
+
+
+@pytest.mark.asyncio
+async def test_log(proxy):
+    s = LogService()
+    await s.ready()
+
+    await proxy.logservice.do_log()
+    await proxy.logservice.async_do_log()
+
+    await s.kill()
