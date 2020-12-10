@@ -282,7 +282,7 @@ class Client:
         msg.content = reply.SerializeToString()
         await self.send_message(msg)
 
-    async def register(self, name, identification=None):
+    async def register(self, name, identification=""):
         """
         Send a ``register`` message.
 
@@ -290,13 +290,11 @@ class Client:
         :param str identification: Optional identification for the service.
         """
 
-        register = Register(name=name)
-        if identification:
-            register.identification = identification
-
-        message = Message(type=Message.Register, content=register.SerializeToString())
-
-        await self.send_message(message)
+        await self.request(
+            "register_service",
+            "cellaserv",
+            data={"name": name, "identification": identification},
+        )
 
     async def request(self, method, service, *, identification=None, data=None):
         """
