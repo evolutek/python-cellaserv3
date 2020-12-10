@@ -86,6 +86,48 @@ We can now query the `time()` action using `cellaservctl`:
     DEBU[2020-12-08T18:59:15+01:00] Sending request date[].time({})               module=client
     1607450355
 
+### CellaservProxy
+
+Example:
+
+```
+import asyncio
+
+from cellaserv.proxy import CellaservProxy
+
+async def main():
+    cs = CellaservProxy()
+
+    # Call the "time" method of the "date" service
+    current_time = await cs.date.time()
+
+    # Sending the "tirette" event. Notice that there is no "await" here because
+    # sending is scheduled as a background coroutine
+    cs("tirette")
+
+    # Start two actions in parallel and wait for both to be completed
+    await asyncio.wait([
+      cs.robot.gotoxy(x=42, y=1337),
+      cs.robot.setup_launcher(),
+    ])
+
+    # Start an action...
+    task = cs.robot.gotoxy(x=1, y=2)
+    # ... meanwhile, do something else ...
+    await cs.robot.blink()
+    # ... finally wait for the first task to finish
+    await task
+
+    # Start an action with a timeout
+    try:
+	await asyncio.wait_for(cs.robot.gotothetha(90), timeout=1)
+    except asyncio.TimeoutError:
+	print("Ooops")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
 ## Authors
 
 - Rémi Audebert, Evolutek 2012-2020
