@@ -22,7 +22,7 @@ Will display::
 
 import asyncio
 
-from cellaserv.service import Service, Event
+from cellaserv.service import Event, Service
 
 
 class Foo(Service):

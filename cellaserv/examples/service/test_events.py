@@ -1,7 +1,7 @@
 import pytest
 
-from cellaserv.service import Service, Event
 from cellaserv.examples.fixtures import proxy
+from cellaserv.service import Event, Service
 
 
 class Foo(Service):

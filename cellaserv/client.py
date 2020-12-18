@@ -6,8 +6,8 @@ high level API you should use ``cellaserv.service.Service``.
 Sample usage is provided in the ``example/`` folder of the source distribution.
 """
 
-import functools
 import asyncio
+import functools
 import json
 import logging
 import random
@@ -19,13 +19,12 @@ from google.protobuf.text_format import MessageToString
 
 from cellaserv.protobuf.cellaserv_pb2 import (
     Message,
-    Register,
-    Request,
-    Reply,
     Publish,
+    Register,
+    Reply,
+    Request,
     Subscribe,
 )
-
 from cellaserv.settings import DEBUG, get_connection
 
 logger = logging.getLogger(__name__)

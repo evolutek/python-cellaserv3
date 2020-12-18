@@ -1,7 +1,7 @@
 import pytest
 
-from cellaserv.proxy import CellaservProxy
 from cellaserv.examples.service.date_service import Date
+from cellaserv.proxy import CellaservProxy
 
 
 @pytest.fixture

@@ -1,7 +1,8 @@
 import asyncio
+
 import pytest
 
-from cellaserv.examples.fixtures import proxy, date_service
+from cellaserv.examples.fixtures import date_service, proxy
 from cellaserv.proxy import CellaservProxy
 
 

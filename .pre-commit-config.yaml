@@ -1,5 +1,4 @@
 files: .*
-exclude: cellaserv/protobuf/.*
 repos:
   - repo: https://github.com/psf/black
     rev: stable
@@ -10,3 +9,9 @@ repos:
     hooks:
       - id: flake8
         args: ["--count", "--select=E9,F63,F7,F82", "--show-source", "--statistics"]
+  - repo: https://github.com/pycqa/isort
+    rev: 5.6.4
+    hooks:
+      - id: isort
+        args: ["--profile", "black", "--filter-files"]
+

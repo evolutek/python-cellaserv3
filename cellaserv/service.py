@@ -77,7 +77,6 @@ When the service is instantiated, it will wait for all the dependencies to be
 registered on cellaserv.
 """
 
-from collections import defaultdict
 import asyncio
 import functools
 import inspect
@@ -89,16 +88,13 @@ import sys
 import threading
 import time
 import traceback
+from collections import defaultdict
 
 from google.protobuf.text_format import MessageToString
 
-from cellaserv.protobuf.cellaserv_pb2 import (
-    Message,
-    Publish,
-)
-
 import cellaserv.settings
 from cellaserv.client import Client
+from cellaserv.protobuf.cellaserv_pb2 import Message, Publish
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG if cellaserv.settings.DEBUG >= 1 else logging.INFO)
