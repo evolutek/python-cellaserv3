@@ -34,24 +34,24 @@ class Basic(Service):
 
 
 @pytest.mark.asyncio
-async def test_basic_service(proxy):
+async def test_basic_service(cs):
     basic = Basic()
     await basic.ready()
 
-    assert await proxy.basic.return_0() == 0
+    assert await cs.basic.return_0() == 0
 
-    assert await proxy.basic.simple_function()
+    assert await cs.basic.simple_function()
 
-    assert await proxy.basic.async_function()
+    assert await cs.basic.async_function()
 
-    assert await asyncio.gather(proxy.basic.wait_future(), proxy.basic.set_future())
+    assert await asyncio.gather(cs.basic.wait_future(), cs.basic.set_future())
 
     await basic.kill()
 
 
 @pytest.mark.asyncio
-async def test_date(date_service, proxy):
-    assert await proxy.date.time() > 0
+async def test_date(date_service, cs):
+    assert await cs.date.time() > 0
 
 
 class Ax12(Service):
@@ -65,7 +65,7 @@ class Ax12(Service):
 
 
 @pytest.mark.asyncio
-async def test_multiple_services(proxy):
+async def test_multiple_services(cs):
     service_count = 10
     # Create N services
     services = [Ax12(i) for i in range(service_count)]
@@ -74,7 +74,7 @@ async def test_multiple_services(proxy):
     await asyncio.gather(*[service.ready() for service in services])
 
     # Test requests
-    await asyncio.gather(*[proxy.ax12[i].set_angle(i) for i in range(service_count)])
+    await asyncio.gather(*[cs.ax12[i].set_angle(i) for i in range(service_count)])
 
     # Teardown
     await asyncio.gather(*[service.kill() for service in services])
@@ -96,11 +96,11 @@ class LogService(Service):
 
 
 @pytest.mark.asyncio
-async def test_log(proxy):
+async def test_log(cs):
     s = LogService()
     await s.ready()
 
-    await proxy.logservice.do_log()
-    await proxy.logservice.async_do_log()
+    await cs.logservice.do_log()
+    await cs.logservice.async_do_log()
 
     await s.kill()

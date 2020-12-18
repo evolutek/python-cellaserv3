@@ -13,8 +13,8 @@ async def date_service():
 
 
 @pytest.fixture
-async def proxy():
-    cs = CellaservProxy()
-    await cs.ready()
-    yield cs
-    await cs.close()
+async def cs():
+    proxy = CellaservProxy()
+    await proxy.ready()
+    yield proxy
+    await proxy.close()

@@ -10,7 +10,7 @@ class Foo(Service):
 
 
 @pytest.mark.asyncio
-async def test_set_event(proxy):
+async def test_set_event(cs):
     foo = Foo()
     await foo.ready()
 

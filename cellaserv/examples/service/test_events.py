@@ -9,17 +9,17 @@ class Foo(Service):
 
 
 @pytest.mark.asyncio
-async def test_set_event(proxy):
+async def test_set_event(cs):
     foo = Foo()
     await foo.ready()
 
     assert not foo.a.is_set()
-    proxy("a")  # set event
+    cs("a")  # set event
     await foo.a.wait()
 
     assert foo.a.is_set()
 
-    proxy("b", foo=42)  # set event with data
+    cs("b", foo=42)  # set event with data
     await foo.b.wait()
 
     assert foo.b.is_set()
@@ -29,14 +29,14 @@ async def test_set_event(proxy):
 
 
 @pytest.mark.asyncio
-async def test_set_unset_event(proxy):
+async def test_set_unset_event(cs):
     foo = Foo()
     await foo.ready()
 
-    proxy("a")  # set event
+    cs("a")  # set event
     await foo.a.wait()
 
-    proxy("a_clear")  # set event
+    cs("a_clear")  # set event
     await foo.a.wait_reset()
 
     await foo.kill()

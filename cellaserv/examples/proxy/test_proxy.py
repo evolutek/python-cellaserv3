@@ -4,36 +4,36 @@ import pytest
 
 
 @pytest.mark.asyncio
-async def test_publish(proxy):
-    proxy("test")
-    proxy("test", foo="bar")
-    proxy("test", bar={"a": "b"})
+async def test_publish(cs):
+    cs("test")
+    cs("test", foo="bar")
+    cs("test", bar={"a": "b"})
 
 
 @pytest.mark.asyncio
-async def test_concurrent_publish(date_service, proxy):
+async def test_concurrent_publish(date_service, cs):
     # Start tasks in parallel
-    coros = [proxy.date.time() for i in range(5)]
+    coros = [cs.date.time() for i in range(5)]
     # Wait for all of them
     await asyncio.gather(*coros)
 
 
 @pytest.mark.asyncio
-async def test_bad_publish(proxy):
+async def test_bad_publish(cs):
     # Rational for raise: this have no meaning
     with pytest.raises(TypeError):
-        proxy()
+        cs()
 
     # Rational for raise: arg must by passed as kw
     with pytest.raises(TypeError):
-        proxy("event", 0)
+        cs("event", 0)
 
     # Rational for raise: bytes are not JSON serializable
     with pytest.raises(TypeError):
-        proxy("test", baz=b"aa")
+        cs("test", baz=b"aa")
 
 
 @pytest.mark.asyncio
-async def test_logging(proxy):
-    proxy("foo")
-    proxy("event", foo="bar")
+async def test_logging(cs):
+    cs("foo")
+    cs("event", foo="bar")

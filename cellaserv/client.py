@@ -336,7 +336,7 @@ class Client:
             publish.data = json.dumps(kwargs).encode()
         except TypeError:
             logging.error("Could not serialize publish data: %s", kwargs)
-            return
+            raise
 
         message = Message(type=Message.Publish, content=publish.SerializeToString())
 
