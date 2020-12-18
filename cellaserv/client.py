@@ -193,7 +193,7 @@ class Client:
 
     async def on_request(self, req):
         # To be implemented by the service
-        pass
+        raise NotImplementedError
 
     async def on_reply(self, reply):
         try:

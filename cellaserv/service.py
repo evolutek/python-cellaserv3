@@ -142,12 +142,26 @@ class Event:
         # Not initialized here because the event loop may not be ready yet
         self._set_event = None
         self._clear_event = None
+        # Cellaserv client
         self._client = None
 
-    def __set_name__(self, owner, name):
+    def __set_name__(self, service, name):
+        try:
+            events = getattr(service, "_event_attributes")
+        except AttributeError:
+            events = []
+            setattr(service, "_event_attributes", events)
+        events.append(self)
+
         self._name = name
         self._event_set = self._event_set or name
         self._event_clear = self._event_clear or f"{name}_clear"
+
+    def async_init(self, client):
+        """Initializes the event with the current event loop."""
+        self._set_event = asyncio.Event()
+        self._clear_event = asyncio.Event()
+        self._client = client
 
     @property
     def event_set(self):
@@ -156,12 +170,6 @@ class Event:
     @property
     def event_clear(self):
         return self._event_clear
-
-    def async_init(self, client):
-        """Initializes the event with the current event loop."""
-        self._set_event = asyncio.Event()
-        self._clear_event = asyncio.Event()
-        self._client = client
 
     async def wait_set(self):
         await self._set_event.wait()
@@ -213,38 +221,73 @@ class Variable:
         >>> class Foo(Service):
         ...     empty_var = Variable()
         ...     with_value = Variable("default_value")
-
-    TODO: make ConfigVariable a child class of Variable
+        ...     foo_var = Variable(name="different_variable_name")
     """
 
-    def __init__(self, default="", name=None):
+    def __init__(self, default="", name=None, coerc=None):
+        """
+        Define a new variable defined using the "config" service.
+
+        :param coerc function: The value will by passed to this function and
+            the result will be the final value.
+        """
         self._value = default
         self._name = name
+        self._coerc = coerc
+
+        # Callbacks called when the variable is updated
+        self._on_update_cb = []
 
     def __set_name__(self, service, name):
-        try:
-            service_variables = getattr(service, "_variables")
-        except AttributeError:
-            service_variables = {}
-            setattr(service, "_variables", service_variables)
-        service_variables[name] = self
-        self._name = name
+        service.register_variable(self, name)
 
     def __set__(self, service, value):
-        self._update(value)
+        self.update(value)
         service.publish(self._name, value=value)
 
     def __get__(self, instance, owner):
         return self._value
 
-    def _update(self, value):
-        self._value = value
+    @property
+    def name(self):
+        return self._name
 
-    def _set_name(self, name):
+    def has_name(self):
+        return self._name is not None
+
+    def set_name(self, name):
         self._name = name
 
+    def update(self, value):
+        if self._coerc:
+            value = self._coerc(value)
+        self._value = value
+        for cb in self._on_update_cb:
+            cb(self._value)
 
-class ConfigVariable:
+    def add_update_cb(self, cb):
+        self._on_update_cb.append(cb)
+
+    def on_update(self, cb):
+        """
+        Decorator. The `cb` function will be called when the variable is
+        updated.
+
+        :param cb function: a function compatible with the prototype f(value)
+        """
+        # Cannot use `self.add_update_cb(cb)` because `cb` is an unbound
+        # function.
+        if hasattr(cb, "_on_update_variables"):
+            cb._on_update_variables.append(self)
+        else:
+            cb._on_update_variables = [self]
+        return cb
+
+    def asdict(self):
+        return {"name": self._name, "value": self._value}
+
+
+class ConfigVariable(Variable):
     """
     ConfigVariable setup a variable using the 'config' service. It will always
     have the most up-to-date value.
@@ -266,13 +309,14 @@ class ConfigVariable:
         >>> class Match(Service):
         ...     color = ConfigVariable("match", "color")
         ...     def __init__(self):
-        ...         self.on_color_update() # set the self.color_coef
-        ...         self.color.add_update_cb(self.on_color_update)
+        ...         self.color_coef = None
+        ...
+        ...     @color.on_update
         ...     def on_color_update(self, value):
         ...         self.color_coef = 1 if value == "red" else -1
     """
 
-    def __init__(self, section, option, coerc=str):
+    def __init__(self, section, option, coerc=None):
         """
         Define a new config variable using the 'config service'.
 
@@ -283,150 +327,88 @@ class ConfigVariable:
         :param coerc function: The value will by passed to this function and
             the result will be the final value.
         """
-        self.section = section
-        self.option = option
-        self.update_cb = []
-        self.value = None
-        self.coerc = coerc
+        self._section = section
+        self._option = option
+        super().__init__(name=f"config.{section}.{option}", coerc=coerc)
 
-    def add_update_cb(self, cb):
-        """
-        add_update_cb(cb) adds callback function that will be called when the
-        value of the variable is updated.
+    def __set_name__(self, service, name):
+        super().__set_name__(service, name)
+        service.register_config_variable(self)
 
-        :param cb function: a function compatible with the prototype f(value)
-        """
-        self.update_cb.append(cb)
+    def __set__(self, service, value):
+        raise TypeError("Cannot set a config variable.")
 
-    def update(self, value):
-        """
-        update(value) is called when the value of the variable changes.
-
-        NB. It is not called when the value is first set.
-        """
-        logger.debug("Variable %s.%s updated: %s", self.section, self.option, value)
-        self.value = self.coerc(value)
-        for cb in self.update_cb:
-            cb(self.value)
-
-    def set(self, value):
-        """set(value) is called when setting the value, not updating it."""
-        self.value = self.coerc(value)
-
-    def __call__(self):
-        """
-        Returns the current value of the variable.
-
-        Handy syntactic sugar.
-        """
-        return self.value
+    async def fetch_value(self, client):
+        data = await client.request(
+            "get", "config", data={"section": self._section, "option": self._option}
+        )
+        logger.info("[ConfigVariable] %s.%s is %s", self._section, self._option, data)
+        self.update(data)
 
 
 class ServiceMeta(type):
-    def __init__(cls, name, bases, nmspc):
-        """
-        ``__init__()`` is called when a new type of Service is created.
+    @classmethod
+    def __prepare__(metacls, *args, **kwargs):
+        namespace = super().__prepare__(*args, **kwargs)
+        # Populate namespace so that class-scoped variables like Variables can
+        # modify the type.
+        namespace["_variables"] = []
+        namespace["_config_variables"] = []
+        return namespace
 
-        This method setups the list of actions (cls._actions) and subscribed
-        events (cls._event) in the new class.
 
-        Basic level of metaprogramming magic.
-        """
+class Service(Client, metaclass=ServiceMeta):
+    @classmethod
+    def register_variable(service, variable, var_name):
+        service._variables.append([variable, var_name])
 
-        def _config_var_wrap_event(variable):
-            async def _variable_update(self, value):
-                variable.update(value=value)
+    @classmethod
+    def register_config_variable(service, config_variable):
+        service._config_variables.append(config_variable)
 
-            return _variable_update
+    def __init__(self, identification=""):
+        super().__init__()
 
-        cls._event_attributes = []
+        # service name is class name in lower case
+        self.service_name = self.__class__.__name__.lower()
+        self.identification = identification
 
+        self._init_smart_attributes()
+
+        # The client has finished the setup phase.
+        self._ready = asyncio.Future()
+
+        asyncio.create_task(self._async_init())
+
+    def _init_smart_attributes(self):
         actions = {}
-        config_variables = []
         events = {}
         coros = []
         service_dependencies = set()
 
         # Go through all the members of the class, check if they are tagged as
         # action, events, etc. Wrap them if necessary then store them in lists.
-        for name, member in inspect.getmembers(cls):
+        for name, member in inspect.getmembers(self):
             if hasattr(member, "_actions"):
                 for action in member._actions:
                     actions[action] = member
             elif hasattr(member, "_events"):
                 for event in member._events:
                     events[event] = member
-            elif hasattr(member, "_coro"):
+            elif hasattr(member, "_service_coro"):
                 coros.append(member)
-
-            elif isinstance(member, ConfigVariable):
-                event_name = "config.{section}.{option}".format(
-                    section=member.section, option=member.option
-                )
-                events[event_name] = _config_var_wrap_event(member)
-                config_variables.append(member)
-                # Ensure config is a dependency for this service
-                service_dependencies.add(("config", ""))
-
-            elif isinstance(member, Event):
-                cls._event_attributes.append(member)
+            elif hasattr(member, "_on_update_variables"):
+                for variable in member._on_update_variables:
+                    variable.add_update_cb(member)
 
         # TODO: move that before and avoid the local variables
-        cls._actions = actions
-        cls._config_variables = config_variables
-        cls._events = events
-        cls._coros = coros
-        cls._service_dependencies = service_dependencies
+        self._actions = actions
+        self._events = events
+        self._coros = coros
+        self._service_dependencies = service_dependencies
 
-        return super().__init__(cls)
-
-
-class Service(Client, metaclass=ServiceMeta):
-
-    # Mandatory name of the service as it will appeared for cellaserv.
-    service_name = None
-    # Optional identification string used to register multiple instances of the
-    # same service.
-    identification = ""
-
-    # Service status
-    status = Variable("Not ready")
-
-    def __init__(self, identification=""):
-        super().__init__()
-
-        if not self.service_name:
-            # service name is class name in lower case
-            self.service_name = self.__class__.__name__.lower()
-
-        self.identification = identification or self.identification or ""
-
-        # The client has finished the setup phase.
-        self._ready = asyncio.Future()
-
-        asyncio.create_task(self._setup())
-
-    # Protocol helpers
-
-    @classmethod
-    def _decode_msg_data(kls, msg):
-        """Returns the data contained in a message."""
-        if msg.data:
-            return kls._decode_data(msg.data)
-        else:
-            return {}
-
-    @staticmethod
-    def _decode_data(data):
-        """Returns the data contained in a message."""
-        try:
-            obj = data.decode()
-            return json.loads(obj)
-        except (UnicodeDecodeError, ValueError):
-            # In case the data cannot be decoded, return raw data.
-            # This "feature" can be used to communicate with services that
-            # don't handle json data, but only raw bytes.
-            return data
+        if not hasattr(self, "_event_attributes"):
+            self._event_attributes = []
 
     # Class decorators
 
@@ -441,8 +423,10 @@ class Service(Client, metaclass=ServiceMeta):
         depend = (service, identification)
 
         def class_builder(cls):
-            cls._service_dependencies.add(depend)
-
+            if hasattr(cls, "_service_dependencies"):
+                cls._service_dependencies.add(depend)
+            else:
+                cls._service_dependencies = {depend}
             return cls
 
         return class_builder
@@ -517,7 +501,8 @@ class Service(Client, metaclass=ServiceMeta):
             ...             await asyncio.sleep(1)
         """
 
-        method._coro = True
+        # Note: `_coro` is already used by asyncio.Task objects
+        method._service_coro = True
         return method
 
     # Instantiated class land
@@ -545,7 +530,10 @@ class Service(Client, metaclass=ServiceMeta):
             return
 
         try:
-            data = self._decode_msg_data(req)
+            if req.data != b"":
+                data = json.loads(req.data.decode())
+            else:
+                data = None
         except Exception:
             logger.error(
                 "Bad arguments formatting: %s", _request_to_string(req), exc_info=True
@@ -564,7 +552,7 @@ class Service(Client, metaclass=ServiceMeta):
                 data,
             )
 
-            # Guess type of arguments passing
+            # Guess type of arguments
             if type(data) is list:
                 args = data
                 kwargs = {}
@@ -572,16 +560,13 @@ class Service(Client, metaclass=ServiceMeta):
                 args = []
                 kwargs = data
             else:
-                args = [data]
+                args = []
                 kwargs = {}
 
-            # We use the descriptor's __get__ because we don't know if the
-            # callback should be bound to this instance.
-            bound_cb = callback.__get__(self, type(self))
             if inspect.iscoroutinefunction(callback):
-                reply_data = await bound_cb(*args, **kwargs)
+                reply_data = await callback(*args, **kwargs)
             else:
-                reply_data = bound_cb(*args, **kwargs)
+                reply_data = callback(*args, **kwargs)
 
             logger.debug(
                 "Called %s/%s.%s(%s) = %s",
@@ -654,9 +639,9 @@ class Service(Client, metaclass=ServiceMeta):
 
     async def list_variables(self) -> dict:
         """List variables of this service."""
-        ret = {}
-        for variable in self._variables.values():
-            ret[variable._name] = variable._value
+        ret = []
+        for variable, _ in self._variables:
+            ret.append(variable.asdict())
         return ret
 
     list_variables._actions = ["list_variables"]
@@ -709,20 +694,19 @@ class Service(Client, metaclass=ServiceMeta):
 
     # Main setup of the service
 
-    async def _setup(self):
+    async def _async_init(self):
         """Initializes the service."""
         await self.connected()
 
-        await self._wait_for_dependencies()
         await self._setup_variables()
-        await self._setup_config_vars()
         await self._setup_events()
+        await self._wait_for_dependencies()
+        await self._setup_config_vars()
 
         await self.register(self.service_name, self.identification)
 
         await self._start_coros()
 
-        self.status = "Ready"
         logger.info("Service running!")
         self._ready.set_result(True)
 
@@ -730,35 +714,17 @@ class Service(Client, metaclass=ServiceMeta):
         await self._ready
 
     async def _setup_config_vars(self):
-        """
-        setup_synchronous manages the static initialization of the service.
-        When this methods return, the service should be fully functional.
-
-        What needs to be synchronously setup:
-
-        - dependencies, that is we have to wait for them to be online,
-        - configuration variables should have the default value.
-        """
-
-        for variable in self._config_variables:
-            req_data = {"section": variable.section, "option": variable.option}
-            req_data_bytes = json.dumps(req_data).encode()
-            # Send the request
-            data = await self.request("get", "config", data=req_data_bytes)
-            # Data is json encoded
-            args = self._decode_data(data)
-            logger.info(
-                "[ConfigVariable] %s.%s is %s", variable.section, variable.option, args
+        if self._config_variables:
+            await asyncio.wait(
+                {variable.fetch_value(self) for variable in self._config_variables}
             )
-            # we don't use update() because the context of the service is
-            # not yet initialized, and it is not an update of a previous
-            # value (because there isn't)
-            variable.set(args)
 
     async def _wait_for_dependencies(self):
         """
         Wait for all dependencies.
         """
+        if self._config_variables:
+            self._service_dependencies.add(("config", ""))
 
         if not self._service_dependencies:
             # No dependencies, return early
@@ -824,18 +790,15 @@ class Service(Client, metaclass=ServiceMeta):
         await client.disconnect()
 
     async def _setup_variables(self):
-        """
-        Setup variables.
-        """
-
-        for var_name, variable in self._variables.items():
-            # Prefix the variable name with the service name
-            fq_var_name = self.service_name
-            if self.identification:
-                fq_var_name += "." + self.identification
-            fq_var_name += "." + var_name
-            variable._set_name(fq_var_name)
-            self._events[fq_var_name] = variable._update
+        for variable, var_name in self._variables:
+            if not variable.has_name():
+                # Prefix the variable name with the service name
+                fq_var_name = self.service_name
+                if self.identification:
+                    fq_var_name += "." + self.identification
+                fq_var_name += "." + var_name
+                variable.set_name(fq_var_name)
+            self._events[variable.name] = variable.update
 
     async def _setup_events(self):
         """
@@ -853,6 +816,4 @@ class Service(Client, metaclass=ServiceMeta):
     async def _start_coros(self):
         """Schedules services coroutines."""
         for method in self._coros:
-            # Bind method to the current instance
-            bound_method = method.__get__(self, type(self))
-            asyncio.create_task(bound_method())
+            asyncio.create_task(method())
