@@ -7,6 +7,7 @@ Sample usage is provided in the ``example/`` folder of the source distribution.
 """
 
 import asyncio
+import inspect
 import json
 import logging
 import random
@@ -348,32 +349,34 @@ class Client:
         def callback_no_payload(cb):
             return cb()
 
-        def callback_payload_list(cb):
-            return cb(*payload)
+        def callback_payload_list(payload):
+            return lambda cb: cb(*payload)
 
-        def callback_payload_dict(cb):
-            return cb(**payload)
+        def callback_payload_dict(payload):
+            return lambda cb: cb(**payload)
 
         # Decode published data
         if pub.data == b"":
-            task = callback_no_payload
+            pass_args = callback_no_payload
         else:
             payload = json.loads(pub.data.decode())
             if isinstance(payload, list):
-                task = callback_payload_list
+                pass_args = callback_payload_list(payload)
             elif isinstance(payload, dict):
-                task = callback_payload_dict
+                pass_args = callback_payload_dict(payload)
             else:
                 logger.warning("Invalid publish data: %s, %s", pub.event, pub.data)
                 return
 
         for cb in self._subscribes[pub.event]:
             logging.debug("[Subscribe] Calling %r(%r)", cb, payload)
-            asyncio.create_task(task(cb))
+            maybe_coro = pass_args(cb)
+            if inspect.iscoroutine(maybe_coro):
+                asyncio.create_task(maybe_coro)
 
-    async def subscribe(self, event, cb=None):
+    async def subscribe(self, event: str, cb=None) -> None:
         """
-        Send a ``subscribe`` message.
+        Subscribes to an event.
 
         :param str event: The name of the event.
         :param cb func or coro: Callback when the event is received.

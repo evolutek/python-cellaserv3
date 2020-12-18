@@ -117,54 +117,44 @@ class Event:
         """
 
         self.name = None
+        self._data = None
 
         # Events that set/clear the event, if they are different from the name
         self._event_set = set
         self._event_clear = clear
 
         # Not initialized here because the event loop may not be ready yet
-        self._set_future = None
-        self._clear_future = None
+        self._set_event = None
+        self._clear_event = None
 
     def async_init(self):
         """Initializes the event with the current event loop."""
-        self._set_future = asyncio.Future()
-        self._clear_future = asyncio.Future()
+        self._set_event = asyncio.Event()
+        self._clear_event = asyncio.Event()
 
-    def wait(self):
-        return self._set_future
+    async def wait_set(self):
+        await self._set_event.wait()
 
-    def wait_reset(self):
-        return self._clear_future
+    async def wait_clear(self):
+        await self._clear_event.wait()
 
     def is_set(self):
-        return self._set_future.done()
+        return self._set_event.is_set()
 
-    async def set(self, *args, **kwargs):
-        logger.debug("Event %s set, args=%s kwargs=", self.name, args, kwargs)
-        self._set_future.set_result(args or kwargs)
-        old_clear_future = self._clear_future
-        self._clear_future = asyncio.Future()
-        old_clear_future.cancel()
+    def set(self, *args, **kwargs):
+        logger.debug("Event %s set, args=%s kwargs=%s", self.name, args, kwargs)
+        self._data = args or kwargs
+        self._set_event.set()
+        self._clear_event.clear()
 
-    async def clear(self):
-        print(self.name, "clear")
+    def clear(self):
         logger.debug("Event %s cleared", self.name)
-        old_set_future = self._set_future
-        self._set_future = asyncio.Future()
-        old_set_future.cancel()
-        self._clear_future.set_result(True)
+        self._data = None
+        self._set_event.clear()
+        self._clear_event.set()
 
     def data(self):
-        return self._set_future.result()
-
-    def __call__(self):
-        """
-        Returns the current value of the event.
-
-        Handy syntactic sugar.
-        """
-        return self.data()
+        return self._data
 
 
 class Variable:
@@ -203,7 +193,6 @@ class Variable:
         service.publish(self._name, value=value)
 
     def __get__(self, instance, owner):
-        del instance  # unused
         return self._value
 
     def _update(self, value):
@@ -798,12 +787,6 @@ class Service(Client, metaclass=ServiceMeta):
         Setup variables.
         """
 
-        def _var_wrap_set(variable):
-            async def _var_set(self, value):
-                variable._update(value)
-
-            return _var_set
-
         for var_name, variable in self._variables.items():
             # Prefix the variable name with the service name
             fq_var_name = self.service_name
@@ -811,7 +794,7 @@ class Service(Client, metaclass=ServiceMeta):
                 fq_var_name += "." + self.identification
             fq_var_name += "." + var_name
             variable._set_name(fq_var_name)
-            self._events[fq_var_name] = _var_wrap_set(variable)
+            self._events[fq_var_name] = variable._update
 
     async def _setup_events(self):
         """

@@ -16,6 +16,7 @@ async def test_set_event(cs):
 
     # Set value
     foo.avar = 42
+    assert foo.avar == 42
 
     # TODO:
     # * test that setting the variable publishes
