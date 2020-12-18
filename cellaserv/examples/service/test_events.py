@@ -9,7 +9,26 @@ class Foo(Service):
 
 
 @pytest.mark.asyncio
-async def test_set_event(cs):
+async def test_set_event():
+    foo = Foo()
+    await foo.ready()
+
+    # Test args
+    data = ("a", "aa")
+    await foo.a.set(*data)
+    assert foo.a.data() == data
+
+    # Reset event
+    await foo.a.clear()
+
+    # Test kwargs
+    data = {"b": "c", "c": 42}
+    await foo.a.set(**data)
+    assert foo.a.data() == data
+
+
+@pytest.mark.asyncio
+async def test_set_event_with_cs(cs):
     foo = Foo()
     await foo.ready()
 

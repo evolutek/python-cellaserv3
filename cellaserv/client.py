@@ -322,21 +322,23 @@ class Client:
         str_stack = "".join(traceback.format_exc())
         await self.publish(event="log.error", data=str_stack.encode())
 
-    def publish(self, event, **kwargs):
+    def publish(self, event, *args, **kwargs):
         """
         Send a ``publish`` message.
 
         :param event str: The event name.
         :param **kwargs: Optional key=value data sent with the event.
         """
-
-        logger.info("[Publish] %s(%s)", event, kwargs)
+        if args and kwargs:
+            raise TypeError("Cannot send a publish with both args and kwargs")
+        data = args or kwargs
+        logger.info("[Publish] %s(%s)", event, data)
 
         publish = Publish(event=event)
         try:
-            publish.data = json.dumps(kwargs).encode()
+            publish.data = json.dumps(data).encode()
         except TypeError:
-            logging.error("Could not serialize publish data: %s", kwargs)
+            logging.error("Could not serialize publish data: %s", data)
             raise
 
         message = Message(type=Message.Publish, content=publish.SerializeToString())

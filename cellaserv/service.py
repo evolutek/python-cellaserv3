@@ -106,6 +106,22 @@ class Event:
 
     External clients can send data to the event in this service using a publish
     message to the event's name.
+
+    Usage::
+
+        >>> class Foo(Service):
+        ...     myevent = Event()
+        ...
+        ...     @Service.coro
+        ...     async def my_coro(self):
+        ...         # Wait for event to be set
+        ...         await self.myevent.wait()
+        ...         # Read data attached to event
+        ...         print(self.myevent.data)
+        ...         # Wait for event to be cleared
+        ...         await self.myevent.wait_clear()
+        ...         # Set an event named "foo"
+        ...         self.set_event("foo")
     """
 
     def __init__(self, set=None, clear=None):
@@ -116,7 +132,7 @@ class Event:
         :param clear str: Event that clears the variable
         """
 
-        self.name = None
+        self._name = None
         self._data = None
 
         # Events that set/clear the event, if they are different from the name
@@ -126,11 +142,26 @@ class Event:
         # Not initialized here because the event loop may not be ready yet
         self._set_event = None
         self._clear_event = None
+        self._client = None
 
-    def async_init(self):
+    def __set_name__(self, owner, name):
+        self._name = name
+        self._event_set = self._event_set or name
+        self._event_clear = self._event_clear or f"{name}_clear"
+
+    @property
+    def event_set(self):
+        return self._event_set
+
+    @property
+    def event_clear(self):
+        return self._event_clear
+
+    def async_init(self, client):
         """Initializes the event with the current event loop."""
         self._set_event = asyncio.Event()
         self._clear_event = asyncio.Event()
+        self._client = client
 
     async def wait_set(self):
         await self._set_event.wait()
@@ -141,14 +172,25 @@ class Event:
     def is_set(self):
         return self._set_event.is_set()
 
-    def set(self, *args, **kwargs):
-        logger.debug("Event %s set, args=%s kwargs=%s", self.name, args, kwargs)
+    async def set(self, *args, **kwargs):
+        if args:
+            self._client.publish(self.event_set, *args)
+        else:
+            self._client.publish(self.event_set, **kwargs)
+        await self.wait_set()
+
+    async def clear(self):
+        self._client.publish(self.event_clear)
+        await self.wait_clear()
+
+    def on_set(self, *args, **kwargs):
+        logger.debug("Event %s set, args=%s kwargs=%s", self._name, args, kwargs)
         self._data = args or kwargs
         self._set_event.set()
         self._clear_event.clear()
 
-    def clear(self):
-        logger.debug("Event %s cleared", self.name)
+    def on_clear(self):
+        logger.debug("Event %s cleared", self._name)
         self._data = None
         self._set_event.clear()
         self._clear_event.set()
@@ -179,12 +221,12 @@ class Variable:
         self._value = default
         self._name = name
 
-    def __set_name__(self, owner, name):
+    def __set_name__(self, service, name):
         try:
-            service_variables = getattr(owner, "_variables")
+            service_variables = getattr(service, "_variables")
         except AttributeError:
             service_variables = {}
-            setattr(owner, "_variables", service_variables)
+            setattr(service, "_variables", service_variables)
         service_variables[name] = self
         self._name = name
 
@@ -297,7 +339,7 @@ class ServiceMeta(type):
 
             return _variable_update
 
-        cls._event_objects = []
+        cls._event_attributes = []
 
         actions = {}
         config_variables = []
@@ -327,8 +369,7 @@ class ServiceMeta(type):
                 service_dependencies.add(("config", ""))
 
             elif isinstance(member, Event):
-                member.name = name
-                cls._event_objects.append(member)
+                cls._event_attributes.append(member)
 
         # TODO: move that before and avoid the local variables
         cls._actions = actions
@@ -800,12 +841,10 @@ class Service(Client, metaclass=ServiceMeta):
         """
         Subscribe to events.
         """
-        for event in self._event_objects:
-            event.async_init()
-            event_set = event._event_set or event.name
-            event_clear = event._event_clear or event.name + "_clear"
-            await self.subscribe(event_set, event.set)
-            await self.subscribe(event_clear, event.clear)
+        for event in self._event_attributes:
+            event.async_init(client=self)
+            await self.subscribe(event.event_set, event.on_set)
+            await self.subscribe(event.event_clear, event.on_clear)
         for event_name, callback in self._events.items():
             # Bind method to object
             callback_bound = callback.__get__(self, type(self))
