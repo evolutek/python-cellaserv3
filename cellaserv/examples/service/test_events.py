@@ -1,6 +1,5 @@
 import pytest
 
-from cellaserv.examples.fixtures import proxy
 from cellaserv.service import Event, Service
 
 

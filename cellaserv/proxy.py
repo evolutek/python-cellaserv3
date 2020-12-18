@@ -18,7 +18,6 @@ Example usage::
     >>> asyncio.run(run())
 """
 
-import asyncio
 import logging
 import traceback
 

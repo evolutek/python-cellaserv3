@@ -1,7 +1,4 @@
 #!/usr/bin/env python3
-
-import asyncio
-
 import pytest
 
 from cellaserv.service import Service

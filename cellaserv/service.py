@@ -78,23 +78,15 @@ registered on cellaserv.
 """
 
 import asyncio
-import functools
 import inspect
 import io
 import json
 import logging
-import os
 import sys
-import threading
-import time
 import traceback
-from collections import defaultdict
-
-from google.protobuf.text_format import MessageToString
 
 import cellaserv.settings
 from cellaserv.client import Client
-from cellaserv.protobuf.cellaserv_pb2 import Message, Publish
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG if cellaserv.settings.DEBUG >= 1 else logging.INFO)
@@ -524,7 +516,7 @@ class Service(Client, metaclass=ServiceMeta):
 
         try:
             data = self._decode_msg_data(req)
-        except Exception as e:
+        except Exception:
             logger.error(
                 "Bad arguments formatting: %s", _request_to_string(req), exc_info=True
             )

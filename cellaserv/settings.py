@@ -14,7 +14,7 @@ def make_setting(name, default, cfg_section, cfg_option, env, coerc=str):
     val = default
     try:
         val = config.get(cfg_section, cfg_option)
-    except:
+    except Exception:
         pass
     val = coerc(os.environ.get(env, val))
     # Inject in the current global namespace

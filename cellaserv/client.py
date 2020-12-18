@@ -7,7 +7,6 @@ Sample usage is provided in the ``example/`` folder of the source distribution.
 """
 
 import asyncio
-import functools
 import json
 import logging
 import random
@@ -17,14 +16,7 @@ from collections import defaultdict
 
 from google.protobuf.text_format import MessageToString
 
-from cellaserv.protobuf.cellaserv_pb2 import (
-    Message,
-    Publish,
-    Register,
-    Reply,
-    Request,
-    Subscribe,
-)
+from cellaserv.protobuf.cellaserv_pb2 import Message, Publish, Reply, Request, Subscribe
 from cellaserv.settings import DEBUG, get_connection
 
 logger = logging.getLogger(__name__)
@@ -341,11 +333,10 @@ class Client:
 
         publish = Publish(event=event)
         try:
-            data = json.dumps(kwargs)
-        except:
+            publish.data = json.dumps(kwargs).encode()
+        except TypeError:
             logging.error("Could not serialize publish data: %s", kwargs)
-            data = repr(kwargs)
-        publish.data = json.dumps(kwargs).encode()
+            return
 
         message = Message(type=Message.Publish, content=publish.SerializeToString())
 
@@ -354,20 +345,31 @@ class Client:
     async def on_publish(self, pub):
         logging.info("[Subscribe] Received %s", pub.event)
 
+        def callback_no_payload(cb):
+            return cb()
+
+        def callback_payload_list(cb):
+            return cb(*payload)
+
+        def callback_payload_dict(cb):
+            return cb(**payload)
+
         # Decode published data
         if pub.data == b"":
-            make_task = lambda cb: cb()
+            task = callback_no_payload
         else:
             payload = json.loads(pub.data.decode())
             if isinstance(payload, list):
-                make_task = lambda cb: cb(*payload)
+                task = callback_payload_list
             elif isinstance(payload, dict):
-                make_task = lambda cb: cb(**payload)
+                task = callback_payload_dict
             else:
                 logger.warning("Invalid publish data: %s, %s", pub.event, pub.data)
+                return
+
         for cb in self._subscribes[pub.event]:
             logging.debug("[Subscribe] Calling %r(%r)", cb, payload)
-            asyncio.create_task(make_task(cb))
+            asyncio.create_task(task(cb))
 
     async def subscribe(self, event, cb=None):
         """

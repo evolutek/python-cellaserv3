@@ -2,9 +2,6 @@ import asyncio
 
 import pytest
 
-from cellaserv.examples.fixtures import date_service, proxy
-from cellaserv.proxy import CellaservProxy
-
 
 @pytest.mark.asyncio
 async def test_publish(proxy):

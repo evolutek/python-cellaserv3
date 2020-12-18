@@ -1,9 +1,8 @@
 import asyncio
-import time
 
 import pytest
 
-from cellaserv.service import ConfigVariable, Service
+from cellaserv.service import Service
 
 
 class CoroService(Service):
