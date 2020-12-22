@@ -100,4 +100,3 @@ class CellaservProxy:
 
     async def close(self):
         await self._client.disconnect()
-        await self._client.disconnected()

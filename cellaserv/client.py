@@ -89,6 +89,8 @@ class Client:
     """Low level cellaserv client. Sends and receives protobuf messages."""
 
     def __init__(self, conn=None):
+        self._conn = conn
+
         # Nonce used to identify requests
         # TODO: use atomic int
         self._request_seq_id = random.randrange(0, 2 ** 32)
@@ -99,51 +101,55 @@ class Client:
         self._conn_write = None
 
         # The client is connected to cellaserv.
-        self._connected = asyncio.Future()
+        self._connected = asyncio.Event()
         # Requests made by this client waiting for a response.
         self._requests_in_flight = {}
         # Topic subscribed to by this client.
         self._subscribes = defaultdict(list)
         # Set this future to disconnect the client.
-        self._disconnect = asyncio.Future()
+        self._disconnect = asyncio.Event()
         # Signals that the client is fully disconnected.
-        self._disconnected = asyncio.Future()
+        self._disconnected = asyncio.Event()
 
-        # Connect to cellaserv
-        self._connect_task = asyncio.create_task(self.connect(conn))
-        self._handle_messages_task = asyncio.create_task(self.handle_messages())
+        self._handle_messages_task = None
 
-    async def connect(self, conn=None):
+        self._async_init_task = asyncio.create_task(self.async_init())
+
+    async def async_init(self):
+        await self.connect()
+        await self.handle_messages()
+
+    async def connect(self):
         """Establish a connection to cellaserv.
 
         Host and port are determined by the cellaserv.settings module, or by
         the ``conn`` parameter, if provided.
         """
-        self._conn_read, self._conn_write = conn or await get_connection()
-        self._connected.set_result(True)
+        self._conn_read, self._conn_write = self._conn or await get_connection()
+        self._connected.set()
 
     async def connected(self):
-        await self._connected
+        await self._connected.wait()
 
     async def disconnect(self):
-        self._disconnect.set_result(True)
+        self._disconnect.set()
 
-        if self._conn_write is not None:
+        if self._async_init_task:
+            self._async_init_task.cancel()
+            try:
+                await self._async_init_task
+            except asyncio.CancelledError:
+                pass
+        if self._conn_write:
             self._conn_write.close()
             await self._conn_write.wait_closed()
-        if self._connect_task:
-            self._connect_task.cancel()
-        if self._handle_messages_task:
-            self._handle_messages_task.cancel()
 
-        self._disconnected.set_result(True)
+        self._disconnected.set()
 
-    def disconnected(self):
-        return self._disconnected
+    async def disconnected(self):
+        await self._disconnected.wait()
 
     async def handle_messages(self):
-        await self._connected
-
         # Read all messages
         async for msg in self._read_messages():
             self._on_msg_received(msg)
@@ -151,16 +157,7 @@ class Client:
     async def _read_messages(self):
         """Read one message. Wire format is 4-byte size, then data."""
         while True:
-            read_header_task = asyncio.create_task(self._conn_read.read(4))
-            await asyncio.wait(
-                {read_header_task, self._disconnect},
-                return_when=asyncio.FIRST_COMPLETED,
-            )
-            if self._disconnect.done():
-                # Client was disconnected
-                read_header_task.cancel()
-                return
-            header = read_header_task.result()
+            header = await self._conn_read.read(4)
             if len(header) == 0:
                 # Connection closed
                 return
@@ -235,7 +232,7 @@ class Client:
         logger.debug("Sending:\n%s", msg)
         msg_data = msg.SerializeToString()
         msg_size_data = struct.pack("!I", len(msg_data))
-        await self._connected
+        await self._connected.wait()
         self._conn_write.write(msg_size_data + msg_data)
 
     async def reply_to(self, req, data=None):
