@@ -177,8 +177,16 @@ class Event:
     def data(self) -> Any:
         raise NotImplementedError
 
+    def per_instance(self, name, client):
+        name = self.name or name
+        set_event = self.set_event or name
+        clear_event = self.clear_event or f"{name}_clear"
+        return EventPerInstance(
+            name=name, set_event=set_event, clear_event=clear_event, client=client
+        )
 
-class EventImpl(Event):
+
+class EventPerInstance(Event):
     """Implementation the Event object when used in a Service."""
 
     def __init__(self, name: str, set_event: str, clear_event: str, client: Client):
@@ -411,10 +419,8 @@ class Service(Client):
         self._actions = {}
         self._events = {}
         self._coros = []
-        self._service_dependencies = set()
         self._variables = []
-
-        self._init_smart_attributes()
+        self._service_dependencies = set()
 
         # The client has finished the setup phase.
         self._ready = asyncio.Event()
@@ -423,22 +429,6 @@ class Service(Client):
         self.cs = CellaservProxy(self)
 
         asyncio.create_task(self._async_init())
-
-    def _getmembers(self):
-        for name, member in inspect.getmembers(self):
-            if isinstance(member, CellaservProxy):
-                continue
-            yield name, member
-
-    def _init_smart_attributes(self):
-        # Go through all the members of the class, check if they are tagged as
-        # action, events, etc. Wrap them if necessary then store them in lists.
-        for name, member in self._getmembers():
-            if hasattr(member, "_actions"):
-                for action in member._actions:
-                    self._actions[action] = member
-            elif hasattr(member, "_service_coro"):
-                self._coros.append(member)
 
     # Class decorators
 
@@ -734,6 +724,7 @@ class Service(Client):
         """Initializes the service."""
         await self.connected()
 
+        await self._init_actions()
         await self._init_variables()
         await self._init_events()
         await self._wait_for_dependencies()
@@ -746,13 +737,16 @@ class Service(Client):
         logger.info("Service running!")
         self._ready.set()
 
+    def _getmembers(self):
+        for name, member in inspect.getmembers(self):
+            # Filter CellaservProxy out because it implements a catchall
+            # __getattr__ which does not play well with hasttr()
+            if isinstance(member, CellaservProxy):
+                continue
+            yield name, member
+
     async def ready(self):
         await self._ready.wait()
-
-    async def _init_variables_values(self):
-        aws = {variable.fetch_value() for variable in self._variables}
-        if aws:
-            await asyncio.wait(aws)
 
     async def _wait_for_dependencies(self):
         """
@@ -821,6 +815,12 @@ class Service(Client):
         await client.wait_for_dependencies()
         await client.disconnect()
 
+    async def _init_actions(self):
+        for name, member in self._getmembers():
+            if hasattr(member, "_actions"):
+                for action in member._actions:
+                    self._actions[action] = member
+
     async def _init_variables(self):
         update_callbacks = defaultdict(list)
 
@@ -850,19 +850,20 @@ class Service(Client):
             # Collect variable
             self._variables.append(variable)
 
+    async def _init_variables_values(self):
+        aws = {variable.fetch_value() for variable in self._variables}
+        if aws:
+            await asyncio.wait(aws)
+
     async def _init_events(self):
         """
         Subscribe to events.
         """
+        # Process Event()-defined events
         for name, member in self._getmembers():
             if not isinstance(member, Event):
                 continue
-            name = member.name or name
-            set_event = member.set_event or name
-            clear_event = member.clear_event or f"{name}_clear"
-            event = EventImpl(
-                name=name, set_event=set_event, clear_event=clear_event, client=self
-            )
+            event = member.per_instance(name, self)
             # Replace event descriptor with event implementation for this
             # instance of the service
             setattr(self, name, event)
@@ -870,6 +871,7 @@ class Service(Client):
             await self.subscribe(event.set_event, event.on_event_set)
             await self.subscribe(event.clear_event, event.on_event_clear)
 
+        # Process @Service.event-defined events
         for name, member in self._getmembers():
             if not hasattr(member, "_events"):
                 continue
