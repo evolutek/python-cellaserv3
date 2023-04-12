@@ -5,12 +5,12 @@ except ImportError:
 
 setup(
     name='python-cellaserv3',
-    version='git',
+    version='1.0',
     url='https://bitbucket.org/evolutek/python-cellaserv3',
     description='Python client for cellaserv3',
     author='Evolutek',
     author_email='evolutek@googlegroups.com',
-    install_requires=open('requirements.txt').read().splitlines(),
+    install_requires=["protobuf>=3.19"],
     packages=['cellaserv', 'cellaserv.protobuf'],
     tests_require=['pytest', 'pytest-timeout'],
     classifiers=[
